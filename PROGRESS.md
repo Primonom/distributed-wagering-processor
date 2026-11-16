@@ -8,8 +8,8 @@
 - [x] 3. Persistence (MikroORM, migrations, constraints, repositories, UoW)
 - [x] 4. Use cases + HTTP
 - [x] 5. Outbox publisher + PENDING_REFERENCE worker
-- [ ] 6. SQS consumer (inbox, retry, DLQ, graceful shutdown)
-- [ ] 7. Observability
+- [x] 6. SQS consumer (inbox, retry, DLQ, graceful shutdown)
+- [x] 7. Observability (pino JSON logs w/ correlationId, prom-client /metrics, /health/live + /health/ready)
 - [ ] 8. Concurrency & failure tests
 - [ ] 9. Documentation
 - [ ] 10. Load test
