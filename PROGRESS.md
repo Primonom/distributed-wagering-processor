@@ -14,7 +14,7 @@
 - [x] 7. Observability (pino JSON logs w/ correlationId, prom-client /metrics, /health/live + /health/ready)
 - [x] 8. Concurrency & failure tests (multi-process)
 - [x] 9. Documentation (README, ARCHITECTURE)
-- [ ] 10. Load test
+- [x] 10. Load test (docs/LOAD_TEST.md)
 
 ## Decisions log (details in ARCHITECTURE.md)
 - Environment: WSL2 Ubuntu + native docker; bun installed from the official zip (no unzip available).
