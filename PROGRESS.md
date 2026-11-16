@@ -7,7 +7,7 @@
 - [x] 2. Domain + unit tests
 - [x] 3. Persistence (MikroORM, migrations, constraints, repositories, UoW)
 - [x] 4. Use cases + HTTP
-- [ ] 5. Outbox publisher + PENDING_REFERENCE worker
+- [x] 5. Outbox publisher + PENDING_REFERENCE worker
 - [ ] 6. SQS consumer (inbox, retry, DLQ, graceful shutdown)
 - [ ] 7. Observability
 - [ ] 8. Concurrency & failure tests
