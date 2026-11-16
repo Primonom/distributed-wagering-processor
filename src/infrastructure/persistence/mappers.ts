@@ -167,7 +167,8 @@ export const OutboxMapper = {
       id: m.id,
       aggregateId: m.aggregateId,
       eventType: m.eventType,
-      payload: m.payload as Record<string, unknown>,
+      // the domain payload is frozen; the ORM needs a mutable copy
+      payload: JSON.parse(JSON.stringify(m.payload)) as Record<string, unknown>,
       occurredAt: m.occurredAt,
       attempts: m.attempts,
       nextAttemptAt: m.nextAttemptAt ?? null,

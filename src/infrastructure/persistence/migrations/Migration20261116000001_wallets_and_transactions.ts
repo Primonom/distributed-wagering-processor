@@ -79,6 +79,11 @@ CREATE INDEX wager_tx_pending_reference_idx
   ON wager_transactions (next_attempt_at)
   WHERE status = 'PENDING_REFERENCE';
 
+-- Lookup of operations waiting for a given reference (to retry them as soon as it lands).
+CREATE INDEX wager_tx_waiting_on_reference_idx
+  ON wager_transactions (provider_id, reference_external_transaction_id)
+  WHERE status = 'PENDING_REFERENCE';
+
 CREATE INDEX wager_tx_wallet_created_idx ON wager_transactions (wallet_id, created_at);
 
 -- State machine guard: terminal rows are frozen, identity/business fields are immutable,

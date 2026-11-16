@@ -39,6 +39,8 @@ export interface WagerTransactionRepository {
    * Leases up to `limit` due PENDING_REFERENCE transactions (FOR UPDATE SKIP LOCKED),
    * pushing their next_attempt_at by `leaseMs` so other instances skip them.
    */
+  /** Makes PENDING_REFERENCE operations waiting on (providerId, externalTransactionId) due now. */
+  nudgePendingDependents(providerId: string, externalTransactionId: string, walletId: string, now: Date): Promise<void>;
   claimDuePendingReferences(now: Date, limit: number, leaseMs: number): Promise<Array<{ id: string; walletId: string }>>;
 }
 

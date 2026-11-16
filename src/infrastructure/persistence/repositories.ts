@@ -122,6 +122,15 @@ class MikroOrmWagerTransactionRepository implements WagerTransactionRepository {
     );
   }
 
+  async nudgePendingDependents(providerId: string, externalTransactionId: string, walletId: string, now: Date): Promise<void> {
+    await this.em.execute(
+      `UPDATE wager_transactions SET next_attempt_at = ?
+        WHERE status = 'PENDING_REFERENCE' AND provider_id = ? AND reference_external_transaction_id = ?
+          AND wallet_id = ? AND next_attempt_at > ?`,
+      [now, providerId, externalTransactionId, walletId, now],
+    );
+  }
+
   async claimDuePendingReferences(now: Date, limit: number, leaseMs: number): Promise<Array<{ id: string; walletId: string }>> {
     const rows = await this.em.execute<Array<{ id: string; wallet_id: string }>>(
       `UPDATE wager_transactions t
