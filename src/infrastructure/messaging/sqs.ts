@@ -82,7 +82,7 @@ export class QueueRegistry {
       if ((error as { name?: string }).name !== 'QueueAlreadyExists' && (error as { name?: string }).name !== 'QueueNameExists') throw error;
       wager = (await this.sqs.send(new GetQueueUrlCommand({ QueueName: this.config.SQS_WAGER_QUEUE }))).QueueUrl ?? '';
     }
-    const events = await create(this.config.SQS_EVENTS_QUEUE, fifo);
+    const events = await create(this.config.SQS_EVENTS_QUEUE, this.config.SQS_EVENTS_QUEUE.endsWith('.fifo') ? fifo : {});
     return { wager, dlq, events };
   }
 }
@@ -101,6 +101,8 @@ export class SqsEventPublisher implements EventPublisher {
 
   async publishBatch(events: Array<{ id: string; groupId: string; envelope: IntegrationEventEnvelope<unknown> }>): Promise<PublishResult[]> {
     const { events: queueUrl } = await this.queues.resolve();
+    // A standard queue (no .fifo suffix) is supported too; then there is no broker-side dedup at all.
+    const fifo = queueUrl.endsWith('.fifo');
     const results: PublishResult[] = [];
     for (let i = 0; i < events.length; i += 10) {
       const chunk = events.slice(i, i + 10);
@@ -110,8 +112,7 @@ export class SqsEventPublisher implements EventPublisher {
           Entries: chunk.map((e, idx) => ({
             Id: String(idx),
             MessageBody: JSON.stringify(e.envelope),
-            MessageGroupId: e.groupId,
-            MessageDeduplicationId: e.id,
+            ...(fifo ? { MessageGroupId: e.groupId, MessageDeduplicationId: e.id } : {}),
             MessageAttributes: {
               eventType: { DataType: 'String', StringValue: e.envelope.eventType },
               eventId: { DataType: 'String', StringValue: e.envelope.eventId },
