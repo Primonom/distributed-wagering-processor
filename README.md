@@ -42,7 +42,7 @@ O Postgres cria também o banco `wallet_test`, usado pelas suítes automatizadas
 | `bun run test:unit` | domínio, sem infraestrutura |
 | `bun run test:integration` | Postgres + LocalStack reais (precisa de `infra:up`) |
 | `bun run test:concurrency` | 3+ processos reais da app, crashes, restart (precisa de `infra:up`) |
-| `bun test` / `bun run test` | `bun test` roda tudo; `bun run test` roda as três suítes em sequência |
+| `bun run test` | unit → integration → concurrency em sequência (use os scripts; `bun test` puro usaria o timeout default de 5 s) |
 | `bun run test:load` | teste de carga contra 3 instâncias (ver abaixo) |
 
 ### Rodando 3 instâncias
