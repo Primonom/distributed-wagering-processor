@@ -1,0 +1,115 @@
+import type { Subprocess } from 'bun';
+import { mkdirSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { TEST_DATABASE_URL, ensureMigrated } from './db';
+
+/**
+ * Real multi-process cluster for concurrency tests: every instance is a separate
+ * `bun src/main.ts` OS process with its own connection pool, workers and SQS consumer,
+ * all sharing the same PostgreSQL database and LocalStack queues.
+ */
+export interface Instance {
+  name: string;
+  port: number;
+  baseUrl: string;
+  proc: Subprocess;
+  env: Record<string, string>;
+  logFile: string;
+}
+
+const ROOT = join(import.meta.dir, '..', '..');
+const LOG_DIR = join(tmpdir(), 'wagering-test-logs');
+mkdirSync(LOG_DIR, { recursive: true });
+
+let nextPort = 42000 + Math.floor(Math.random() * 2000);
+
+export const FAST_ENV: Record<string, string> = {
+  DATABASE_URL: TEST_DATABASE_URL,
+  LOG_LEVEL: process.env.TEST_LOG_LEVEL ?? 'warn',
+  DB_POOL_MAX: '20',
+  CONSUMER_ENABLED: 'false',
+  OUTBOX_ENABLED: 'false',
+  PENDING_WORKER_ENABLED: 'false',
+  SQS_WAIT_TIME_S: '1',
+  SQS_VISIBILITY_TIMEOUT_S: '3',
+  SQS_RETRY_BASE_S: '1',
+  SQS_RETRY_MAX_S: '2',
+  OUTBOX_POLL_MS: '50',
+  PENDING_POLL_MS: '50',
+  PENDING_RETRY_BASE_MS: '50',
+  PENDING_RETRY_MAX_MS: '200',
+  PENDING_MAX_ATTEMPTS: '50',
+  PENDING_LEASE_MS: '3000',
+  SHUTDOWN_TIMEOUT_MS: '5000',
+};
+
+export function queueEnv(tag = randomUUID().slice(0, 8)): Record<string, string> {
+  return {
+    SQS_WAGER_QUEUE: `c-${tag}-wager.fifo`,
+    SQS_WAGER_DLQ: `c-${tag}-wager-dlq.fifo`,
+    SQS_EVENTS_QUEUE: `c-${tag}-events.fifo`,
+  };
+}
+
+export async function spawnInstance(name: string, env: Record<string, string>, opts: { waitReady?: boolean } = {}): Promise<Instance> {
+  await ensureMigrated();
+  const port = nextPort++;
+  const logFile = join(LOG_DIR, `${name}-${port}.log`);
+  const fullEnv = { ...process.env, ...FAST_ENV, ...env, PORT: String(port), INSTANCE_ID: `${name}-${port}` } as Record<string, string>;
+  const proc = Bun.spawn({
+    cmd: [process.execPath, 'src/main.ts'],
+    cwd: ROOT,
+    env: fullEnv,
+    stdout: Bun.file(logFile),
+    stderr: Bun.file(`${logFile}.err`),
+  });
+  const instance: Instance = { name, port, baseUrl: `http://127.0.0.1:${port}`, proc, env: fullEnv, logFile };
+  if (opts.waitReady ?? true) await waitReady(instance);
+  return instance;
+}
+
+export async function waitReady(instance: Instance, timeoutMs = 90_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (instance.proc.exitCode !== null) throw new Error(`${instance.name} exited early with ${instance.proc.exitCode}; see ${instance.logFile}.err`);
+    try {
+      const res = await fetch(`${instance.baseUrl}/health/ready`);
+      if (res.status === 200) return;
+    } catch {
+      /* not listening yet */
+    }
+    await Bun.sleep(200);
+  }
+  throw new Error(`${instance.name} not ready after ${timeoutMs}ms`);
+}
+
+export async function spawnCluster(size: number, env: Record<string, string>, prefix = 'node'): Promise<Instance[]> {
+  return Promise.all(Array.from({ length: size }, (_, i) => spawnInstance(`${prefix}${i + 1}`, env)));
+}
+
+/** SIGKILL: no shutdown hooks, connections dropped — simulates a crash. */
+export async function crash(instance: Instance): Promise<void> {
+  instance.proc.kill('SIGKILL');
+  await instance.proc.exited;
+}
+
+/** SIGTERM: graceful shutdown path. Returns the exit code. */
+export async function terminate(instance: Instance): Promise<number> {
+  instance.proc.kill('SIGTERM');
+  return instance.proc.exited;
+}
+
+export async function stopAll(instances: Instance[]): Promise<void> {
+  await Promise.all(
+    instances.map(async (i) => {
+      if (i.proc.exitCode === null && !i.proc.killed) {
+        i.proc.kill('SIGTERM');
+        const timer = setTimeout(() => i.proc.kill('SIGKILL'), 10_000);
+        await i.proc.exited;
+        clearTimeout(timer);
+      }
+    }),
+  );
+}
