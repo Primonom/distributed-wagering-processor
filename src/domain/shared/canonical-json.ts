@@ -1,3 +1,9 @@
+/**
+ * @file canonical-json.ts
+ * @author Pablo Reis Rebonato
+ * @description Deterministic JSON serialisation and SHA-256 hashing used for payload fingerprints.
+ */
+
 import { createHash } from 'node:crypto';
 
 /**
@@ -31,6 +37,7 @@ export function canonicalJson(value: unknown): string {
   }
 }
 
+/** Lowercase hex SHA-256 of a UTF-8 string. */
 export function sha256Hex(input: string): string {
   return createHash('sha256').update(input, 'utf8').digest('hex');
 }

@@ -1,3 +1,9 @@
+/**
+ * @file payload-hash.ts
+ * @author Pablo Reis Rebonato
+ * @description Fingerprint of the business fields of a wager operation, used to detect idempotency-key conflicts.
+ */
+
 import { canonicalJson, sha256Hex } from '../shared/canonical-json';
 import { MoneyProps } from '../shared/money';
 

@@ -1,3 +1,9 @@
+/**
+ * @file money.test.ts
+ * @author Pablo Reis Rebonato
+ * @description Unit tests for Money parsing, arithmetic, scale and currency rules.
+ */
+
 import { describe, expect, test } from 'bun:test';
 import { CurrencyMismatchError, InvalidMoneyError, Money } from '../../src/domain';
 
@@ -13,9 +19,27 @@ describe('Money', () => {
   });
 
   test.each([
-    ['NaN'], ['Infinity'], ['-Infinity'], ['1e3'], ['1E-2'], [''], [' '], [' 1.00'], ['1.00 '],
-    ['1.001'], ['0.005'], ['-1.00'], ['-0.01'], ['+1.00'], ['.5'], ['5.'], ['01.00'], ['1,00'],
-    ['0x10'], ['1_000'], ['1000000000000000000.00'],
+    ['NaN'],
+    ['Infinity'],
+    ['-Infinity'],
+    ['1e3'],
+    ['1E-2'],
+    [''],
+    [' '],
+    [' 1.00'],
+    ['1.00 '],
+    ['1.001'],
+    ['0.005'],
+    ['-1.00'],
+    ['-0.01'],
+    ['+1.00'],
+    ['.5'],
+    ['5.'],
+    ['01.00'],
+    ['1,00'],
+    ['0x10'],
+    ['1_000'],
+    ['1000000000000000000.00'],
   ])('rejects invalid contract amount %p', (amount) => {
     expect(() => brl(amount)).toThrow(InvalidMoneyError);
   });

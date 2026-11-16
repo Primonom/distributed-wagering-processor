@@ -1,4 +1,10 @@
-import { InvalidTransactionStateError, assertNonEmpty } from '../shared/errors';
+/**
+ * @file inbox-message.ts
+ * @author Pablo Reis Rebonato
+ * @description Inbox record that de-duplicates consumed queue messages per consumer.
+ */
+
+import { assertNonEmpty, InvalidTransactionStateError } from '../shared/errors';
 
 export interface ReceiveInboxProps {
   messageId: string;
@@ -24,6 +30,7 @@ export class InboxMessage {
     private _processedAt?: Date,
   ) {}
 
+  /** New, unprocessed inbox record for a message just received. */
   static receive(props: ReceiveInboxProps): InboxMessage {
     assertNonEmpty(props.messageId, 'messageId');
     assertNonEmpty(props.consumerName, 'consumerName');
@@ -31,6 +38,7 @@ export class InboxMessage {
     return new InboxMessage(props.messageId, props.consumerName, props.payloadHash, props.receivedAt);
   }
 
+  /** Reconstruction from persistence without validation. */
   static rehydrate(state: InboxMessageState): InboxMessage {
     return new InboxMessage(state.messageId, state.consumerName, state.payloadHash, state.receivedAt, state.processedAt);
   }
@@ -43,6 +51,10 @@ export class InboxMessage {
     return this._processedAt !== undefined;
   }
 
+  /**
+   * Marks the message as handled in the same transaction as its business effect.
+   * @throws InvalidTransactionStateError when it was already processed.
+   */
   markProcessed(at: Date): void {
     if (this._processedAt) {
       throw new InvalidTransactionStateError(`inbox message ${this.messageId} already processed`);

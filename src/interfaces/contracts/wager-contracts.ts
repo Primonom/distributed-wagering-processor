@@ -1,3 +1,9 @@
+/**
+ * @file wager-contracts.ts
+ * @author Pablo Reis Rebonato
+ * @description Zod wire contracts shared by the HTTP API and the SQS consumer.
+ */
+
 import { z } from 'zod';
 
 /**

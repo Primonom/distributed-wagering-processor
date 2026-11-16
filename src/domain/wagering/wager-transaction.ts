@@ -1,9 +1,11 @@
+/**
+ * @file wager-transaction.ts
+ * @author Pablo Reis Rebonato
+ * @description WagerTransaction aggregate: kinds, statuses and the state machine of a provider operation.
+ */
+
 import { LedgerDirection, oppositeDirection } from '../ledger/wallet-ledger-entry';
-import {
-  InvalidTransactionStateError,
-  InvalidWagerTransactionError,
-  InvariantViolationError,
-} from '../shared/errors';
+import { InvalidTransactionStateError, InvalidWagerTransactionError, InvariantViolationError } from '../shared/errors';
 import { FailureCode } from '../shared/failure-code';
 import { Money } from '../shared/money';
 
@@ -33,11 +35,7 @@ export const SUBMITTABLE_KINDS = [
   WagerTransactionKind.Rollback,
 ] as const;
 
-const TERMINAL = new Set([
-  WagerTransactionStatus.Processed,
-  WagerTransactionStatus.Rejected,
-  WagerTransactionStatus.Failed,
-]);
+const TERMINAL = new Set([WagerTransactionStatus.Processed, WagerTransactionStatus.Rejected, WagerTransactionStatus.Failed]);
 
 /**
  * Allowed reference kinds per operation. WIN/LOSS may *optionally* reference the BET
@@ -84,6 +82,10 @@ export interface WagerTransactionState extends CreateWagerTransactionProps {
   updatedAt: Date;
 }
 
+/**
+ * Provider operation and its lifecycle: PENDING → PROCESSED | REJECTED | PENDING_REFERENCE | FAILED.
+ * Terminal states are final; the database guards the same transitions with a trigger.
+ */
 export class WagerTransaction {
   private constructor(
     public readonly id: string,
@@ -129,8 +131,16 @@ export class WagerTransaction {
 
   private static build(props: CreateWagerTransactionProps): WagerTransaction {
     const required: Array<keyof CreateWagerTransactionProps> = [
-      'id', 'providerId', 'externalTransactionId', 'idempotencyKey', 'payloadHash',
-      'walletId', 'playerId', 'roundId', 'gameId', 'correlationId',
+      'id',
+      'providerId',
+      'externalTransactionId',
+      'idempotencyKey',
+      'payloadHash',
+      'walletId',
+      'playerId',
+      'roundId',
+      'gameId',
+      'correlationId',
     ];
     for (const field of required) {
       const value = props[field];
@@ -160,35 +170,88 @@ export class WagerTransaction {
       throw new InvalidWagerTransactionError('INVALID_PAYLOAD', 'a transaction cannot reference itself');
     }
     return new WagerTransaction(
-      props.id, props.providerId, props.externalTransactionId, props.idempotencyKey, props.payloadHash,
-      props.walletId, props.playerId, props.roundId, props.gameId, props.kind, props.money,
-      reference, props.correlationId, props.createdAt,
-      WagerTransactionStatus.Pending, undefined, undefined, undefined, undefined, 0, undefined, props.createdAt,
+      props.id,
+      props.providerId,
+      props.externalTransactionId,
+      props.idempotencyKey,
+      props.payloadHash,
+      props.walletId,
+      props.playerId,
+      props.roundId,
+      props.gameId,
+      props.kind,
+      props.money,
+      reference,
+      props.correlationId,
+      props.createdAt,
+      WagerTransactionStatus.Pending,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      0,
+      undefined,
+      props.createdAt,
     );
   }
 
   /** Reconstruction from persistence — does not re-validate transitions. */
   static rehydrate(state: WagerTransactionState): WagerTransaction {
     return new WagerTransaction(
-      state.id, state.providerId, state.externalTransactionId, state.idempotencyKey, state.payloadHash,
-      state.walletId, state.playerId, state.roundId, state.gameId, state.kind, state.money,
-      state.referenceExternalTransactionId, state.correlationId, state.createdAt,
-      state.status, state.referenceTransactionId, state.failureCode, state.processedAt,
-      state.balanceSnapshot, state.attempts, state.nextAttemptAt, state.updatedAt,
+      state.id,
+      state.providerId,
+      state.externalTransactionId,
+      state.idempotencyKey,
+      state.payloadHash,
+      state.walletId,
+      state.playerId,
+      state.roundId,
+      state.gameId,
+      state.kind,
+      state.money,
+      state.referenceExternalTransactionId,
+      state.correlationId,
+      state.createdAt,
+      state.status,
+      state.referenceTransactionId,
+      state.failureCode,
+      state.processedAt,
+      state.balanceSnapshot,
+      state.attempts,
+      state.nextAttemptAt,
+      state.updatedAt,
     );
   }
 
-  get status(): WagerTransactionStatus { return this._status; }
-  get referenceTransactionId(): string | undefined { return this._referenceTransactionId; }
-  get failureCode(): FailureCode | undefined { return this._failureCode; }
-  get processedAt(): Date | undefined { return this._processedAt; }
-  get balanceSnapshot(): Money | undefined { return this._balanceSnapshot; }
-  get attempts(): number { return this._attempts; }
-  get nextAttemptAt(): Date | undefined { return this._nextAttemptAt; }
-  get updatedAt(): Date { return this._updatedAt; }
+  get status(): WagerTransactionStatus {
+    return this._status;
+  }
+  get referenceTransactionId(): string | undefined {
+    return this._referenceTransactionId;
+  }
+  get failureCode(): FailureCode | undefined {
+    return this._failureCode;
+  }
+  get processedAt(): Date | undefined {
+    return this._processedAt;
+  }
+  get balanceSnapshot(): Money | undefined {
+    return this._balanceSnapshot;
+  }
+  get attempts(): number {
+    return this._attempts;
+  }
+  get nextAttemptAt(): Date | undefined {
+    return this._nextAttemptAt;
+  }
+  get updatedAt(): Date {
+    return this._updatedAt;
+  }
 
-  // ---- transitions -------------------------------------------------------------
-
+  /**
+   * Terminal success; reversals must carry the resolved reference id.
+   * @throws InvalidTransactionStateError when already terminal.
+   */
   markProcessed(referenceTransactionId: string | undefined, at: Date, balanceAfter: Money): void {
     this.assertNotTerminal('markProcessed');
     if (this.requiresReference() && referenceTransactionId === undefined) {
@@ -232,6 +295,10 @@ export class WagerTransaction {
     this._updatedAt = at;
   }
 
+  /**
+   * Terminal business rejection with a stable failure code (keeps the observed balance for audit).
+   * @throws InvalidTransactionStateError when already terminal.
+   */
   reject(code: FailureCode, at: Date, balanceObserved: Money, referenceTransactionId?: string): void {
     this.assertNotTerminal('reject');
     this._status = WagerTransactionStatus.Rejected;
@@ -242,6 +309,10 @@ export class WagerTransaction {
     this._updatedAt = at;
   }
 
+  /**
+   * Terminal infrastructure failure; blocks the idempotency key from being reused.
+   * @throws InvalidTransactionStateError when already terminal.
+   */
   fail(code: FailureCode, at: Date): void {
     this.assertNotTerminal('fail');
     this._status = WagerTransactionStatus.Failed;
@@ -250,28 +321,32 @@ export class WagerTransaction {
     this._updatedAt = at;
   }
 
-  // ---- domain queries ----------------------------------------------------------
-
+  /** PROCESSED, REJECTED and FAILED never change again. */
   isTerminal(): boolean {
     return TERMINAL.has(this._status);
   }
 
+  /** LOSS settles a round without moving money. */
   affectsBalance(): boolean {
     return this.kind !== WagerTransactionKind.Loss;
   }
 
+  /** REFUND and ROLLBACK must point at an earlier operation. */
   requiresReference(): boolean {
     return this.kind === WagerTransactionKind.Refund || this.kind === WagerTransactionKind.Rollback;
   }
 
+  /** Reversals undo their reference and are allowed at most once per reference. */
   isReversal(): boolean {
     return this.requiresReference();
   }
 
+  /** Whether this kind may reference an operation of `kind`. */
   allowsReferenceKind(kind: WagerTransactionKind): boolean {
     return ALLOWED_REFERENCE_KINDS[this.kind].includes(kind);
   }
 
+  /** Same idempotency key with a different hash is a conflict, not a replay. */
   matchesPayload(payloadHash: string): boolean {
     return this.payloadHash === payloadHash;
   }

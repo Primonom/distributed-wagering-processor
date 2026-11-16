@@ -1,6 +1,16 @@
+/**
+ * @file api.ts
+ * @author Pablo Reis Rebonato
+ * @description Typed HTTP test client and wager payload builder.
+ */
+
 import { randomUUID } from 'node:crypto';
 
-export interface HttpResult<T = Record<string, unknown>> {
+/** Parsed JSON response body; tests narrow it with expectations or explicit casts. */
+export type Json = string | number | boolean | null | Json[] | { [key: string]: Json };
+export type JsonObject = { [key: string]: Json };
+
+export interface HttpResult<T = JsonObject> {
   status: number;
   body: T;
   headers: Headers;
@@ -9,7 +19,12 @@ export interface HttpResult<T = Record<string, unknown>> {
 export class ApiClient {
   constructor(readonly baseUrl: string) {}
 
-  async request<T = Record<string, any>>(method: string, path: string, body?: unknown, headers: Record<string, string> = {}): Promise<HttpResult<T>> {
+  async request<T = JsonObject>(
+    method: string,
+    path: string,
+    body?: unknown,
+    headers: Record<string, string> = {},
+  ): Promise<HttpResult<T>> {
     const res = await fetch(`${this.baseUrl}${path}`, {
       method,
       headers: { 'content-type': 'application/json', ...headers },

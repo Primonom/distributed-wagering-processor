@@ -1,3 +1,9 @@
+/**
+ * @file queries.ts
+ * @author Pablo Reis Rebonato
+ * @description Read-side use cases: wallet, ledger pagination with a keyset cursor, transaction lookup and balance reconciliation.
+ */
+
 import { Money, MoneyProps, WagerTransaction, Wallet, WalletLedgerEntry } from '../../domain';
 import { InvalidRequestError, ResourceNotFoundError } from '../errors/application-errors';
 import type { LedgerCursor, LoggerPort, MetricsPort, UnitOfWork } from '../ports';
@@ -9,29 +15,43 @@ export const LedgerCursorCodec = {
   encode(entry: { createdAt: Date; id: string }): string {
     return Buffer.from(JSON.stringify({ c: entry.createdAt.toISOString(), i: entry.id }), 'utf8').toString('base64url');
   },
+  /** @throws InvalidRequestError (INVALID_CURSOR) when the cursor was not produced by `encode`. */
   decode(cursor: string): LedgerCursor {
+    const malformed = new InvalidRequestError('INVALID_CURSOR', 'cursor is malformed');
+    let parsed: { c?: unknown; i?: unknown } | null;
     try {
-      const parsed = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as { c?: unknown; i?: unknown };
-      if (typeof parsed.c !== 'string' || typeof parsed.i !== 'string') throw new Error('shape');
-      const createdAt = new Date(parsed.c);
-      if (Number.isNaN(createdAt.getTime())) throw new Error('date');
-      return { createdAt, id: parsed.i };
+      parsed = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'));
     } catch {
-      throw new InvalidRequestError('INVALID_CURSOR', 'cursor is malformed');
+      throw malformed;
     }
+    if (parsed === null || typeof parsed !== 'object' || typeof parsed.c !== 'string' || typeof parsed.i !== 'string') throw malformed;
+    const createdAt = new Date(parsed.c);
+    if (Number.isNaN(createdAt.getTime())) throw malformed;
+    return { createdAt, id: parsed.i };
   },
 };
 
+/** Read-only queries; they never take locks. */
 export class WalletQueries {
   constructor(private readonly uow: UnitOfWork) {}
 
+  /** @throws ResourceNotFoundError when the wallet does not exist. */
   async getWallet(walletId: string): Promise<Wallet> {
     const wallet = await this.uow.read((r) => r.wallets.findById(walletId));
     if (!wallet) throw new ResourceNotFoundError('wallet', walletId);
     return wallet;
   }
 
-  async getLedger(walletId: string, cursor: string | undefined, limit: number): Promise<{ entries: WalletLedgerEntry[]; nextCursor: string | null }> {
+  /**
+   * Ledger page in (createdAt, id) order with an opaque cursor to the next page.
+   * @throws InvalidRequestError for an invalid limit or cursor.
+   * @throws ResourceNotFoundError when the wallet does not exist.
+   */
+  async getLedger(
+    walletId: string,
+    cursor: string | undefined,
+    limit: number,
+  ): Promise<{ entries: WalletLedgerEntry[]; nextCursor: string | null }> {
     if (!Number.isInteger(limit) || limit < 1 || limit > LEDGER_MAX_PAGE) {
       throw new InvalidRequestError('INVALID_PAYLOAD', `limit must be an integer between 1 and ${LEDGER_MAX_PAGE}`);
     }
@@ -46,12 +66,14 @@ export class WalletQueries {
     });
   }
 
+  /** @throws ResourceNotFoundError when the transaction does not exist. */
   async getTransaction(transactionId: string): Promise<WagerTransaction> {
     const tx = await this.uow.read((r) => r.transactions.findById(transactionId));
     if (!tx) throw new ResourceNotFoundError('transaction', transactionId);
     return tx;
   }
 
+  /** @throws ResourceNotFoundError when no transaction has that provider id and external id. */
   async getTransactionByExternalId(providerId: string, externalTransactionId: string): Promise<WagerTransaction> {
     const tx = await this.uow.read((r) => r.transactions.findByProviderAndExternalId(providerId, externalTransactionId));
     if (!tx) throw new ResourceNotFoundError('transaction', `${providerId}/${externalTransactionId}`);
@@ -81,6 +103,7 @@ export class ReconcileWallet {
     private readonly logger: LoggerPort,
   ) {}
 
+  /** @throws ResourceNotFoundError when the wallet does not exist. */
   async execute(walletId: string, correlationId: string): Promise<ReconciliationReport> {
     const report = await this.uow.run({ name: 'reconcile' }, async (r) => {
       const wallet = await r.wallets.findByIdForShare(walletId);
@@ -100,7 +123,13 @@ export class ReconcileWallet {
     if (!report.consistent) {
       this.metrics.reconciliationDivergence();
       this.logger.error(
-        { correlationId, walletId, walletVersion: report.walletVersion, checkedEntries: report.checkedEntries, alert: 'RECONCILIATION_DIVERGENCE' },
+        {
+          correlationId,
+          walletId,
+          walletVersion: report.walletVersion,
+          checkedEntries: report.checkedEntries,
+          alert: 'RECONCILIATION_DIVERGENCE',
+        },
         'wallet balance diverges from ledger',
       );
     }

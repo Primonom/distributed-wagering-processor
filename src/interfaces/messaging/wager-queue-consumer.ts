@@ -1,12 +1,18 @@
+/**
+ * @file wager-queue-consumer.ts
+ * @author Pablo Reis Rebonato
+ * @description SQS consumer for wager operations with inbox de-duplication, retry backoff, DLQ routing and graceful drain.
+ */
+
+import { randomUUID } from 'node:crypto';
 import {
   ChangeMessageVisibilityCommand,
   DeleteMessageCommand,
   type Message,
   ReceiveMessageCommand,
-  SQSClient,
   SendMessageCommand,
+  SQSClient,
 } from '@aws-sdk/client-sqs';
-import { randomUUID } from 'node:crypto';
 import {
   ExternalTransactionConflictError,
   IdempotencyKeyConflictError,
@@ -16,7 +22,7 @@ import type { LoggerPort, MetricsPort } from '../../application/ports';
 import type { RecordPermanentFailure } from '../../application/use-cases/record-permanent-failure';
 import type { SubmitWagerCommand, SubmitWagerTransaction } from '../../application/use-cases/submit-wager-transaction';
 import type { QueueRegistry } from '../../infrastructure/messaging/sqs';
-import { WagerMessageSchema, formatZodError } from '../contracts/wager-contracts';
+import { formatZodError, WagerMessageSchema } from '../contracts/wager-contracts';
 
 export interface ConsumerSettings {
   consumerName: string;
@@ -161,7 +167,14 @@ export class WagerQueueConsumer {
       correlationId,
       source: { channel: 'sqs', consumerName: this.settings.consumerName, messageId: envelope.messageId },
     };
-    const logCtx = { correlationId, messageId: envelope.messageId, sqsMessageId, providerId: cmd.providerId, walletId: cmd.walletId, receiveCount };
+    const logCtx = {
+      correlationId,
+      messageId: envelope.messageId,
+      sqsMessageId,
+      providerId: cmd.providerId,
+      walletId: cmd.walletId,
+      receiveCount,
+    };
 
     try {
       const result = await this.submit.execute(cmd);
@@ -171,10 +184,23 @@ export class WagerQueueConsumer {
         await Bun.sleep(10_000);
       }
       await this.ack(message);
-      this.logger.info({ ...logCtx, transactionId: result.transactionId, status: result.status, failureCode: result.failureCode, duplicate: result.duplicateMessage || result.idempotentReplay }, 'wager message processed');
+      this.logger.info(
+        {
+          ...logCtx,
+          transactionId: result.transactionId,
+          status: result.status,
+          failureCode: result.failureCode,
+          duplicate: result.duplicateMessage || result.idempotentReplay,
+        },
+        'wager message processed',
+      );
       return 'ack';
     } catch (error) {
-      if (error instanceof InvalidRequestError || error instanceof IdempotencyKeyConflictError || error instanceof ExternalTransactionConflictError) {
+      if (
+        error instanceof InvalidRequestError ||
+        error instanceof IdempotencyKeyConflictError ||
+        error instanceof ExternalTransactionConflictError
+      ) {
         this.logger.warn({ ...logCtx, code: error.code }, 'permanent failure for wager message');
         await this.moveToDlq(message, error.code, receiveCount);
         return 'dlq';
@@ -205,7 +231,9 @@ export class WagerQueueConsumer {
   private async changeVisibility(message: Message, seconds: number): Promise<void> {
     try {
       const { wager } = await this.queues.resolve();
-      await this.sqs.send(new ChangeMessageVisibilityCommand({ QueueUrl: wager, ReceiptHandle: message.ReceiptHandle, VisibilityTimeout: seconds }));
+      await this.sqs.send(
+        new ChangeMessageVisibilityCommand({ QueueUrl: wager, ReceiptHandle: message.ReceiptHandle, VisibilityTimeout: seconds }),
+      );
     } catch (error) {
       this.logger.warn({ sqsMessageId: message.MessageId, err: error }, 'could not change message visibility');
     }

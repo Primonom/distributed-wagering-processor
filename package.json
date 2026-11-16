@@ -7,6 +7,9 @@
     "dev": "bun --watch src/main.ts",
     "start": "bun src/main.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
     "infra:up": "docker compose up -d --wait postgres localstack",
     "infra:down": "docker compose --profile app down -v",
     "migration:up": "bun scripts/migrate.ts up",
@@ -39,6 +42,7 @@
     "zod": "^3"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.3.8",
     "@types/bun": "^1.4.4",
     "@types/express": "^5.0.6",
     "@types/pg": "^8.23.1",

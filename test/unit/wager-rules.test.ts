@@ -1,14 +1,20 @@
+/**
+ * @file wager-rules.test.ts
+ * @author Pablo Reis Rebonato
+ * @description Unit tests for WagerTransaction creation, its state machine and the wager business rules.
+ */
+
 import { describe, expect, test } from 'bun:test';
 import {
   FailureCode,
   InvalidTransactionStateError,
   InvalidWagerTransactionError,
+  WagerTransactionKind as K,
   LedgerDirection,
   Money,
+  WagerTransactionStatus as S,
   WagerProcessor,
   WagerTransaction,
-  WagerTransactionKind as K,
-  WagerTransactionStatus as S,
   Wallet,
 } from '../../src/domain';
 
@@ -23,9 +29,20 @@ function wallet(balance = '100.00'): Wallet {
 function tx(kind: K, amount = '10.00', overrides: Partial<Parameters<typeof WagerTransaction.create>[0]> = {}): WagerTransaction {
   const n = ++seq;
   return WagerTransaction.create({
-    id: `tx-${n}`, providerId: 'prov', externalTransactionId: `ext-${n}`, idempotencyKey: `prov:ext-${n}`,
-    payloadHash: `hash-${n}`, walletId: 'w-1', playerId: 'p-1', roundId: 'r-1', gameId: 'g-1', kind,
-    money: brl(amount), correlationId: 'corr', createdAt: at, ...overrides,
+    id: `tx-${n}`,
+    providerId: 'prov',
+    externalTransactionId: `ext-${n}`,
+    idempotencyKey: `prov:ext-${n}`,
+    payloadHash: `hash-${n}`,
+    walletId: 'w-1',
+    playerId: 'p-1',
+    roundId: 'r-1',
+    gameId: 'g-1',
+    kind,
+    money: brl(amount),
+    correlationId: 'corr',
+    createdAt: at,
+    ...overrides,
   });
 }
 
@@ -33,10 +50,24 @@ function tx(kind: K, amount = '10.00', overrides: Partial<Parameters<typeof Wage
 function processed(kind: K, amount = '10.00', overrides: Partial<Parameters<typeof WagerTransaction.create>[0]> = {}): WagerTransaction {
   const t = tx(kind, amount, overrides);
   return WagerTransaction.rehydrate({
-    id: t.id, providerId: t.providerId, externalTransactionId: t.externalTransactionId, idempotencyKey: t.idempotencyKey,
-    payloadHash: t.payloadHash, walletId: t.walletId, playerId: t.playerId, roundId: t.roundId, gameId: t.gameId,
-    kind: t.kind, money: t.money, referenceExternalTransactionId: t.referenceExternalTransactionId, correlationId: 'c',
-    createdAt: at, status: S.Processed, processedAt: at, attempts: 0, updatedAt: at,
+    id: t.id,
+    providerId: t.providerId,
+    externalTransactionId: t.externalTransactionId,
+    idempotencyKey: t.idempotencyKey,
+    payloadHash: t.payloadHash,
+    walletId: t.walletId,
+    playerId: t.playerId,
+    roundId: t.roundId,
+    gameId: t.gameId,
+    kind: t.kind,
+    money: t.money,
+    referenceExternalTransactionId: t.referenceExternalTransactionId,
+    correlationId: 'c',
+    createdAt: at,
+    status: S.Processed,
+    processedAt: at,
+    attempts: 0,
+    updatedAt: at,
     referenceTransactionId: t.referenceExternalTransactionId ? 'some-ref' : undefined,
   });
 }
@@ -55,7 +86,11 @@ describe('WagerTransaction creation', () => {
 
   test('OPENING cannot be submitted', () => {
     expect(() => tx(K.Opening)).toThrow(InvalidWagerTransactionError);
-    try { tx(K.Opening); } catch (e) { expect((e as InvalidWagerTransactionError).code).toBe('OPENING_NOT_ALLOWED'); }
+    try {
+      tx(K.Opening);
+    } catch (e) {
+      expect((e as InvalidWagerTransactionError).code).toBe('OPENING_NOT_ALLOWED');
+    }
   });
 
   test('REFUND and ROLLBACK require a reference', () => {
@@ -66,7 +101,9 @@ describe('WagerTransaction creation', () => {
 
   test('BET cannot carry a reference; a transaction cannot reference itself', () => {
     expect(() => tx(K.Bet, '1.00', { referenceExternalTransactionId: 'x' })).toThrow(InvalidWagerTransactionError);
-    expect(() => tx(K.Refund, '1.00', { externalTransactionId: 'same', referenceExternalTransactionId: 'same' })).toThrow(InvalidWagerTransactionError);
+    expect(() => tx(K.Refund, '1.00', { externalTransactionId: 'same', referenceExternalTransactionId: 'same' })).toThrow(
+      InvalidWagerTransactionError,
+    );
   });
 
   test('amount must be positive (LOSS may be zero)', () => {

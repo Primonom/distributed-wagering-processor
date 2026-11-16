@@ -1,4 +1,10 @@
-import { InvariantViolationError, assertNonEmpty } from '../shared/errors';
+/**
+ * @file wallet-ledger-entry.ts
+ * @author Pablo Reis Rebonato
+ * @description Immutable ledger line whose arithmetic and version chain are validated on creation.
+ */
+
+import { assertNonEmpty, InvariantViolationError } from '../shared/errors';
 import { Money } from '../shared/money';
 
 export enum LedgerDirection {
@@ -6,6 +12,7 @@ export enum LedgerDirection {
   Credit = 'CREDIT',
 }
 
+/** Direction that undoes a movement (used by ROLLBACK). */
 export function oppositeDirection(direction: LedgerDirection): LedgerDirection {
   return direction === LedgerDirection.Debit ? LedgerDirection.Credit : LedgerDirection.Debit;
 }
@@ -45,6 +52,10 @@ export class WalletLedgerEntry {
     Object.freeze(this);
   }
 
+  /**
+   * Validates ids, positive amount, version >= 1, arithmetic and non-negative result.
+   * @throws InvariantViolationError on any violation.
+   */
   static create(props: CreateLedgerEntryProps): WalletLedgerEntry {
     assertNonEmpty(props.id, 'id');
     assertNonEmpty(props.walletId, 'walletId');
@@ -70,6 +81,7 @@ export class WalletLedgerEntry {
     return entry;
   }
 
+  /** Reconstruction from persistence without validation (the database already enforces it). */
   static rehydrate(state: LedgerEntryState): WalletLedgerEntry {
     return new WalletLedgerEntry(
       state.id,
@@ -90,9 +102,7 @@ export class WalletLedgerEntry {
       return false;
     }
     const expected =
-      this.direction === LedgerDirection.Credit
-        ? this.balanceBefore.add(this.money)
-        : this.balanceBefore.subtract(this.money);
+      this.direction === LedgerDirection.Credit ? this.balanceBefore.add(this.money) : this.balanceBefore.subtract(this.money);
     return expected.equals(this.balanceAfter);
   }
 

@@ -1,4 +1,10 @@
 /**
+ * @file application-errors.ts
+ * @author Pablo Reis Rebonato
+ * @description Application error hierarchy, each class mapping to exactly one HTTP status and SQS handling strategy.
+ */
+
+/**
  * Application-level errors. Each one maps to exactly one HTTP status / SQS handling
  * class in the interface layer, so callers never have to parse messages.
  */

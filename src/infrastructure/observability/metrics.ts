@@ -1,4 +1,10 @@
-import { Counter, Gauge, Histogram, Registry, collectDefaultMetrics } from 'prom-client';
+/**
+ * @file metrics.ts
+ * @author Pablo Reis Rebonato
+ * @description Prometheus metrics registry (one per instance) implementing the MetricsPort.
+ */
+
+import { Counter, collectDefaultMetrics, Gauge, Histogram, Registry } from 'prom-client';
 import type { MetricsPort } from '../../application/ports';
 
 /**

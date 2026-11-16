@@ -1,3 +1,9 @@
+/**
+ * @file money.ts
+ * @author Pablo Reis Rebonato
+ * @description Immutable fixed-scale Money value object backed by decimal.js, with string-only input and output.
+ */
+
 import Decimal from 'decimal.js';
 import { CurrencyMismatchError, InvalidMoneyError } from './errors';
 
@@ -56,6 +62,7 @@ export class Money {
     return Money.parse(amount, currency, { allowNegative: true });
   }
 
+  /** @throws InvalidMoneyError when the currency is not an ISO-4217 code. */
   static zero(currency: string): Money {
     Money.assertCurrency(currency);
     return new Money(new Dec(0), currency);
@@ -88,11 +95,13 @@ export class Money {
     return this.value.toFixed(MONEY_SCALE);
   }
 
+  /** @throws CurrencyMismatchError when currencies differ. */
   add(other: Money): Money {
     this.assertSameCurrency(other);
     return new Money(this.value.plus(other.value), this.currency);
   }
 
+  /** @throws CurrencyMismatchError when currencies differ. The result may be negative. */
   subtract(other: Money): Money {
     this.assertSameCurrency(other);
     return new Money(this.value.minus(other.value), this.currency);
@@ -114,16 +123,19 @@ export class Money {
     return this.value.lessThan(0);
   }
 
+  /** @throws CurrencyMismatchError when currencies differ. */
   isLessThan(other: Money): boolean {
     this.assertSameCurrency(other);
     return this.value.lessThan(other.value);
   }
 
+  /** @throws CurrencyMismatchError when currencies differ. */
   isGreaterThanOrEqual(other: Money): boolean {
     this.assertSameCurrency(other);
     return this.value.greaterThanOrEqualTo(other.value);
   }
 
+  /** Value equality; different currencies are never equal (no exception). */
   equals(other: Money): boolean {
     return this.currency === other.currency && this.value.equals(other.value);
   }
@@ -132,6 +144,7 @@ export class Money {
     return this.currency === (typeof other === 'string' ? other : other.currency);
   }
 
+  /** Wire representation: amount as a fixed-scale string, never a number. */
   toJSON(): MoneyProps {
     return { amount: this.amount, currency: this.currency };
   }

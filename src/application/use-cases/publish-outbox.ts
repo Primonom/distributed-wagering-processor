@@ -1,3 +1,9 @@
+/**
+ * @file publish-outbox.ts
+ * @author Pablo Reis Rebonato
+ * @description Transactional-outbox relay that publishes pending events with FOR UPDATE SKIP LOCKED and schedules retries with backoff.
+ */
+
 import { BackoffPolicy, IntegrationEventEnvelope } from '../../domain';
 import type { Clock, EventPublisher, LoggerPort, MetricsPort, UnitOfWork } from '../ports';
 
@@ -27,6 +33,7 @@ export class PublishOutbox {
     private readonly settings: PublishOutboxSettings,
   ) {}
 
+  /** Publishes one batch; returns how many events were marked published. */
   async runOnce(): Promise<number> {
     return this.uow.run({ name: 'publish-outbox', retryOnConflict: false }, async (repos) => {
       const now = this.clock.now();
@@ -68,6 +75,7 @@ export class PublishOutbox {
     });
   }
 
+  /** Updates the pending-count and oldest-pending-age gauges from the database. */
   async refreshGauges(): Promise<void> {
     const stats = await this.uow.read((r) => r.outbox.stats(this.clock.now()));
     this.metrics.outboxState(stats.pending, stats.oldestPendingAgeSeconds);

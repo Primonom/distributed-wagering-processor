@@ -1,3 +1,9 @@
+/**
+ * @file index.ts
+ * @author Pablo Reis Rebonato
+ * @description Port interfaces (repositories, unit of work, clock, ids, publisher, logging, metrics, identity) and their injection tokens.
+ */
+
 import type {
   InboxMessage,
   IntegrationEventEnvelope,
@@ -7,8 +13,6 @@ import type {
   Wallet,
   WalletLedgerEntry,
 } from '../../domain';
-
-// ---------------------------------------------------------------- repositories
 
 export interface WalletRepository {
   findById(id: string): Promise<Wallet | undefined>;
@@ -94,8 +98,6 @@ export interface UnitOfWork {
   /** Read-only access outside an explicit transaction. */
   read<T>(work: (repos: TransactionalRepositories) => Promise<T>): Promise<T>;
 }
-
-// ---------------------------------------------------------------- other ports
 
 export interface Clock {
   now(): Date;

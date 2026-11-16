@@ -1,6 +1,12 @@
+/**
+ * @file http-races.test.ts
+ * @author Pablo Reis Rebonato
+ * @description Multi-process HTTP race tests for idempotency, same-wallet contention, parallel wallets and out-of-order delivery.
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import type pg from 'pg';
-import { ApiClient, type HttpResult, wager } from '../helpers/api';
+import { ApiClient, type HttpResult, type JsonObject, wager } from '../helpers/api';
 import { eventually } from '../helpers/app';
 import { type Instance, queueEnv, spawnCluster, stopAll } from '../helpers/cluster';
 import { assertWalletConsistent, newPool } from '../helpers/db';
@@ -26,7 +32,11 @@ afterAll(async () => {
 
 const statuses = (results: HttpResult[]) => results.map((r) => `${r.status}:${r.body.status}:${r.body.failureCode ?? ''}`);
 const debits = async (walletId: string) =>
-  (await db.query<{ n: number }>(`SELECT COUNT(*)::int AS n FROM wallet_ledger_entries WHERE wallet_id = $1 AND direction = 'DEBIT'`, [walletId])).rows[0]?.n;
+  (
+    await db.query<{ n: number }>(`SELECT COUNT(*)::int AS n FROM wallet_ledger_entries WHERE wallet_id = $1 AND direction = 'DEBIT'`, [
+      walletId,
+    ])
+  ).rows[0]?.n;
 
 describe('idempotency under concurrency', () => {
   test('the same BET sent 50 times in parallel to 3 instances debits exactly once', async () => {
@@ -36,7 +46,7 @@ describe('idempotency under concurrency', () => {
     expect(results.every((r) => r.status === 200)).toBe(true);
     expect(new Set(results.map((r) => r.body.transactionId)).size).toBe(1);
     expect(results.filter((r) => r.body.idempotentReplay === false).length).toBe(1);
-    expect(results.every((r) => r.body.balance.amount === '975.00')).toBe(true);
+    expect(results.every((r) => (r.body.balance as JsonObject).amount === '975.00')).toBe(true);
     expect(await debits(w.walletId)).toBe(1);
     const b = await assertWalletConsistent(db, w.walletId);
     expect(b.stored).toBe('975.00');
@@ -46,7 +56,9 @@ describe('idempotency under concurrency', () => {
     const w = await pick(0).createWallet('1000.00');
     const base = wager(w, 'BET', '1.00');
     const results = await Promise.all(
-      Array.from({ length: 30 }, (_, i) => pick(i).submit({ ...base, money: { amount: `${(i % 3) + 1}.00`, currency: 'BRL' } }, 'same-key-' + base.externalTransactionId)),
+      Array.from({ length: 30 }, (_, i) =>
+        pick(i).submit({ ...base, money: { amount: `${(i % 3) + 1}.00`, currency: 'BRL' } }, `same-key-${base.externalTransactionId}`),
+      ),
     );
     const ok = results.filter((r) => r.status === 200);
     const conflicts = results.filter((r) => r.status === 409);
@@ -94,7 +106,9 @@ describe('competing for the same balance', () => {
     await pick(0).submit(bet);
     const results = await Promise.all(
       Array.from({ length: 24 }, (_, i) =>
-        pick(i).submit(wager(w, i % 2 === 0 ? 'REFUND' : 'ROLLBACK', '40.00', { referenceExternalTransactionId: bet.externalTransactionId })),
+        pick(i).submit(
+          wager(w, i % 2 === 0 ? 'REFUND' : 'ROLLBACK', '40.00', { referenceExternalTransactionId: bet.externalTransactionId }),
+        ),
       ),
     );
     expect(results.filter((r) => r.status === 200).length).toBe(1);
@@ -141,7 +155,9 @@ describe('out-of-order delivery across instances', () => {
       }),
     );
     for (const { w, refundId } of pairs) {
-      await eventually(async () => (await pick(0).request('GET', `/wagering/transactions/${refundId}`)).body.status === 'PROCESSED', { timeoutMs: 20_000 });
+      await eventually(async () => (await pick(0).request('GET', `/wagering/transactions/${refundId}`)).body.status === 'PROCESSED', {
+        timeoutMs: 20_000,
+      });
       const b = await assertWalletConsistent(db, w.walletId);
       expect(b.stored).toBe('100.00');
     }

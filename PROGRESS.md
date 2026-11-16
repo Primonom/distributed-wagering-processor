@@ -10,6 +10,7 @@
 ```bash
 bun install
 bun run typecheck
+bun run lint
 bun run infra:up
 bun run migration:up && bun run migration:down && bun run migration:up
 bun run test:unit
@@ -19,6 +20,13 @@ bun run cluster:up                # 3 replicas on :3001-3003 (README has curl / 
 bun scripts/send-sqs-message.ts <walletId> <playerId> BET 10.00
 bun run test:load                 # optional, ~2 min, rewrites the results block of docs/LOAD_TEST.md
 ```
+
+### Code polish pass (2026-11-16)
+- Authorship header (`@file` / `@author` / `@description`) on every `.ts` file (src, test, scripts, migrations); line-comment equivalent in the SQL init script, the LocalStack hook, `docker-compose.yml` and `Dockerfile`.
+- Biome 2.3.8 (`biome.json`): recommended rules plus strict additions (`noExplicitAny`, `noConsole` outside `scripts/`, `noNonNullAssertion`, unused imports/variables/parameters/private members, `useTemplate`, `noForEach`, ...), formatter and import sorting. `bun run lint` reports 0 diagnostics. `useImportType` is off on purpose: NestJS DI relies on `emitDecoratorMetadata`, which needs value imports of injected classes.
+- Removed every `any` (typed JSON body in the test client, typed response in the load test), the `console.log` in `main.ts` (now the pino root logger), non-null assertions in tests (checked `at()` helper), redundant error constructors, decorative section comments and exception-as-control-flow in the ledger cursor decoder.
+- Short TSDoc on the public API of the domain and the use cases (contracts, invariants, `@throws`); trivial getters and self-describing predicates stay undocumented on purpose.
+- Verified after the pass: typecheck 0 errors, lint 0 diagnostics, 81 unit + 77 integration + 13 concurrency tests green.
 
 ### Honest limitations / open points
 - Verified on **WSL2 (Ubuntu) + Docker Engine**, not on native Windows PowerShell. The scripts are cross-platform (no bash in `package.json`; helpers are TS run by Bun). On native Windows the graceful-SIGTERM concurrency test is skipped, because POSIX signals don't exist there (`proc.kill('SIGTERM')` is a hard kill).
@@ -46,6 +54,7 @@ bun run test:load                 # optional, ~2 min, rewrites the results block
 - [x] 8. Concurrency & failure tests (multi-process)
 - [x] 9. Documentation (README, ARCHITECTURE)
 - [x] 10. Load test (docs/LOAD_TEST.md)
+- [x] 11. Code polish (Biome lint/format, authorship headers, TSDoc, dead-code and `any` removal)
 
 ## Decisions log (details in ARCHITECTURE.md)
 - Environment: WSL2 Ubuntu + native docker; bun installed from the official zip (no unzip available).

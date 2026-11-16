@@ -1,7 +1,13 @@
+/**
+ * @file migrations.test.ts
+ * @author Pablo Reis Rebonato
+ * @description Integration test running the migrations up, down and up again on a scratch database.
+ */
+
 import { afterAll, beforeAll, expect, test } from 'bun:test';
 import { loadConfig } from '../../src/infrastructure/config/app-config';
 import { createOrm } from '../../src/infrastructure/persistence/mikro-orm';
-import { TEST_DATABASE_URL, newClient } from '../helpers/db';
+import { newClient, TEST_DATABASE_URL } from '../helpers/db';
 
 /** Runs the full migration cycle on a scratch database so the shared test DB is untouched. */
 const scratchDb = `wallet_migrations_${process.pid}`;

@@ -1,15 +1,17 @@
-import {
-  CreateQueueCommand,
-  GetQueueAttributesCommand,
-  GetQueueUrlCommand,
-  SQSClient,
-  SendMessageBatchCommand,
-} from '@aws-sdk/client-sqs';
+/**
+ * @file sqs.ts
+ * @author Pablo Reis Rebonato
+ * @description SQS client factory, queue resolution/bootstrap and the batch publisher used by the outbox relay.
+ */
+
+import { CreateQueueCommand, GetQueueAttributesCommand, GetQueueUrlCommand, SendMessageBatchCommand, SQSClient } from '@aws-sdk/client-sqs';
 import type { EventPublisher, PublishResult } from '../../application/ports';
 import type { IntegrationEventEnvelope } from '../../domain';
 import type { AppConfig } from '../config/app-config';
 
-export function createSqsClient(config: Pick<AppConfig, 'AWS_REGION' | 'SQS_ENDPOINT' | 'AWS_ACCESS_KEY_ID' | 'AWS_SECRET_ACCESS_KEY'>): SQSClient {
+export function createSqsClient(
+  config: Pick<AppConfig, 'AWS_REGION' | 'SQS_ENDPOINT' | 'AWS_ACCESS_KEY_ID' | 'AWS_SECRET_ACCESS_KEY'>,
+): SQSClient {
   return new SQSClient({
     region: config.AWS_REGION,
     endpoint: config.SQS_ENDPOINT,
@@ -24,7 +26,10 @@ export interface QueueUrls {
   events: string;
 }
 
-type QueueConfig = Pick<AppConfig, 'SQS_WAGER_QUEUE' | 'SQS_WAGER_DLQ' | 'SQS_EVENTS_QUEUE' | 'SQS_MAX_RECEIVE_COUNT' | 'SQS_VISIBILITY_TIMEOUT_S' | 'SQS_BOOTSTRAP'>;
+type QueueConfig = Pick<
+  AppConfig,
+  'SQS_WAGER_QUEUE' | 'SQS_WAGER_DLQ' | 'SQS_EVENTS_QUEUE' | 'SQS_MAX_RECEIVE_COUNT' | 'SQS_VISIBILITY_TIMEOUT_S' | 'SQS_BOOTSTRAP'
+>;
 
 /**
  * Resolves (and, when SQS_BOOTSTRAP=true, idempotently creates) the queues:
@@ -55,7 +60,11 @@ export class QueueRegistry {
       if (!res.QueueUrl) throw new Error(`queue ${name} not found`);
       return res.QueueUrl;
     };
-    return { wager: await url(this.config.SQS_WAGER_QUEUE), dlq: await url(this.config.SQS_WAGER_DLQ), events: await url(this.config.SQS_EVENTS_QUEUE) };
+    return {
+      wager: await url(this.config.SQS_WAGER_QUEUE),
+      dlq: await url(this.config.SQS_WAGER_DLQ),
+      events: await url(this.config.SQS_EVENTS_QUEUE),
+    };
   }
 
   private async bootstrap(): Promise<QueueUrls> {
@@ -79,7 +88,8 @@ export class QueueRegistry {
       wager = await create(this.config.SQS_WAGER_QUEUE, wagerAttributes);
     } catch (error) {
       // Queue already exists with other attributes (e.g. created by the LocalStack init hook).
-      if ((error as { name?: string }).name !== 'QueueAlreadyExists' && (error as { name?: string }).name !== 'QueueNameExists') throw error;
+      if ((error as { name?: string }).name !== 'QueueAlreadyExists' && (error as { name?: string }).name !== 'QueueNameExists')
+        throw error;
       wager = (await this.sqs.send(new GetQueueUrlCommand({ QueueName: this.config.SQS_WAGER_QUEUE }))).QueueUrl ?? '';
     }
     const events = await create(this.config.SQS_EVENTS_QUEUE, this.config.SQS_EVENTS_QUEUE.endsWith('.fifo') ? fifo : {});
@@ -99,7 +109,9 @@ export class SqsEventPublisher implements EventPublisher {
     private readonly queues: QueueRegistry,
   ) {}
 
-  async publishBatch(events: Array<{ id: string; groupId: string; envelope: IntegrationEventEnvelope<unknown> }>): Promise<PublishResult[]> {
+  async publishBatch(
+    events: Array<{ id: string; groupId: string; envelope: IntegrationEventEnvelope<unknown> }>,
+  ): Promise<PublishResult[]> {
     const { events: queueUrl } = await this.queues.resolve();
     // A standard queue (no .fifo suffix) is supported too; then there is no broker-side dedup at all.
     const fifo = queueUrl.endsWith('.fifo');

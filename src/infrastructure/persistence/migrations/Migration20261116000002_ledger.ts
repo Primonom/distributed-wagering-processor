@@ -1,3 +1,9 @@
+/**
+ * @file Migration20261116000002_ledger.ts
+ * @author Pablo Reis Rebonato
+ * @description Reversible migration creating the append-only ledger and the triggers that keep balance and ledger consistent.
+ */
+
 import { Migration } from '@mikro-orm/migrations';
 
 /**

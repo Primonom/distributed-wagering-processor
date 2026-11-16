@@ -1,8 +1,14 @@
+/**
+ * @file outbox-and-pending.test.ts
+ * @author Pablo Reis Rebonato
+ * @description Integration tests for the PENDING_REFERENCE worker and the transactional outbox relay.
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import type pg from 'pg';
 import { PublishOutbox } from '../../src/application/use-cases/publish-outbox';
-import { ApiClient, wager } from '../helpers/api';
-import { type TestApp, eventually, startTestApp, testQueues } from '../helpers/app';
+import { ApiClient, type JsonObject, wager } from '../helpers/api';
+import { eventually, startTestApp, type TestApp, testQueues } from '../helpers/app';
 import { assertWalletConsistent, newPool } from '../helpers/db';
 import { drain, queueUrl, testSqs } from '../helpers/sqs';
 
@@ -21,7 +27,12 @@ describe('out-of-order references (PENDING_REFERENCE worker)', () => {
   let t: TestApp;
   let api: ApiClient;
   beforeAll(async () => {
-    t = await startTestApp({ PENDING_WORKER_ENABLED: true, PENDING_MAX_ATTEMPTS: 40, PENDING_RETRY_BASE_MS: 50, PENDING_RETRY_MAX_MS: 100 });
+    t = await startTestApp({
+      PENDING_WORKER_ENABLED: true,
+      PENDING_MAX_ATTEMPTS: 40,
+      PENDING_RETRY_BASE_MS: 50,
+      PENDING_RETRY_MAX_MS: 100,
+    });
     api = new ApiClient(t.baseUrl);
   });
   afterAll(() => t.close());
@@ -71,7 +82,12 @@ describe('out-of-order references (PENDING_REFERENCE worker)', () => {
 
 describe('reference never arrives', () => {
   test('after the attempt limit the transaction is REJECTED with REFERENCE_NOT_FOUND and an event is emitted', async () => {
-    const t = await startTestApp({ PENDING_WORKER_ENABLED: true, PENDING_MAX_ATTEMPTS: 3, PENDING_RETRY_BASE_MS: 20, PENDING_RETRY_MAX_MS: 40 });
+    const t = await startTestApp({
+      PENDING_WORKER_ENABLED: true,
+      PENDING_MAX_ATTEMPTS: 3,
+      PENDING_RETRY_BASE_MS: 20,
+      PENDING_RETRY_MAX_MS: 40,
+    });
     try {
       const api = new ApiClient(t.baseUrl);
       const w = await api.createWallet('10.00');
@@ -83,7 +99,10 @@ describe('reference never arrives', () => {
       });
       expect(tx.failureCode).toBe('REFERENCE_NOT_FOUND');
       expect(tx.attempts).toBe(3);
-      const { rows } = await db.query(`SELECT event_type, payload->'data'->>'failureCode' AS code FROM outbox_messages WHERE aggregate_id = $1 AND event_type = 'WagerTransactionRejected'`, [w.walletId]);
+      const { rows } = await db.query(
+        `SELECT event_type, payload->'data'->>'failureCode' AS code FROM outbox_messages WHERE aggregate_id = $1 AND event_type = 'WagerTransactionRejected'`,
+        [w.walletId],
+      );
       expect(rows).toEqual([{ event_type: 'WagerTransactionRejected', code: 'REFERENCE_NOT_FOUND' }]);
       await assertWalletConsistent(db, w.walletId);
     } finally {
@@ -107,10 +126,17 @@ describe('transactional outbox relay', () => {
       const w = await api.createWallet('100.00');
       await api.submit(wager(w, 'BET', '10.00'));
       await api.submit(wager(w, 'LOSS', '0.00', { roundId: 'r2' }));
-      const { rows: expected } = await db.query<{ id: string; event_type: string }>(`SELECT id, event_type FROM outbox_messages WHERE aggregate_id = $1 ORDER BY occurred_at, event_type`, [w.walletId]);
+      const { rows: expected } = await db.query<{ id: string; event_type: string }>(
+        `SELECT id, event_type FROM outbox_messages WHERE aggregate_id = $1 ORDER BY occurred_at, event_type`,
+        [w.walletId],
+      );
       // OPENING (BalanceChanged + Processed), BET (BalanceChanged + Processed), LOSS (Processed only)
       expect(expected.map((r) => r.event_type).sort()).toEqual([
-        'WagerTransactionProcessed', 'WagerTransactionProcessed', 'WagerTransactionProcessed', 'WalletBalanceChanged', 'WalletBalanceChanged',
+        'WagerTransactionProcessed',
+        'WagerTransactionProcessed',
+        'WagerTransactionProcessed',
+        'WalletBalanceChanged',
+        'WalletBalanceChanged',
       ]);
       while ((await relay.runOnce()) > 0);
 
@@ -121,7 +147,9 @@ describe('transactional outbox relay', () => {
       expect(sample).toMatchObject({ aggregateId: w.walletId, version: 1 });
       expect(received[0]?.Attributes?.MessageGroupId).toBe(w.walletId);
       expect(received[0]?.Attributes?.MessageDeduplicationId).toBe(sample.eventId);
-      const { rows } = await db.query(`SELECT COUNT(*)::int AS n FROM outbox_messages WHERE aggregate_id = $1 AND published_at IS NULL`, [w.walletId]);
+      const { rows } = await db.query(`SELECT COUNT(*)::int AS n FROM outbox_messages WHERE aggregate_id = $1 AND published_at IS NULL`, [
+        w.walletId,
+      ]);
       expect(rows[0].n).toBe(0);
     } finally {
       await writer.close();
@@ -130,7 +158,13 @@ describe('transactional outbox relay', () => {
 
   test('SQS unavailable → attempts and backoff recorded, nothing lost; published once SQS is back', async () => {
     const queues = testQueues();
-    const broken = await startTestApp({ ...queues, SQS_ENDPOINT: 'http://127.0.0.1:1', SQS_BOOTSTRAP: false, OUTBOX_RETRY_BASE_MS: 50, OUTBOX_RETRY_MAX_MS: 50 });
+    const broken = await startTestApp({
+      ...queues,
+      SQS_ENDPOINT: 'http://127.0.0.1:1',
+      SQS_BOOTSTRAP: false,
+      OUTBOX_RETRY_BASE_MS: 50,
+      OUTBOX_RETRY_MAX_MS: 50,
+    });
     const healthy = await startTestApp({ ...queues });
     try {
       while ((await healthy.app.get(PublishOutbox).runOnce()) > 0);
@@ -138,18 +172,24 @@ describe('transactional outbox relay', () => {
       const w = await api.createWallet('3.00');
       const failedRun = await broken.app.get(PublishOutbox).runOnce();
       expect(failedRun).toBe(0);
-      const { rows } = await db.query(`SELECT attempts, next_attempt_at > now() AS deferred, last_error IS NOT NULL AS has_error FROM outbox_messages WHERE aggregate_id = $1`, [w.walletId]);
+      const { rows } = await db.query(
+        `SELECT attempts, next_attempt_at > now() AS deferred, last_error IS NOT NULL AS has_error FROM outbox_messages WHERE aggregate_id = $1`,
+        [w.walletId],
+      );
       expect(rows.length).toBe(2);
       for (const r of rows) expect(r).toEqual({ attempts: 1, deferred: true, has_error: true });
 
       await eventually(async () => {
         await healthy.app.get(PublishOutbox).runOnce();
-        const { rows: left } = await db.query(`SELECT COUNT(*)::int AS n FROM outbox_messages WHERE aggregate_id = $1 AND published_at IS NULL`, [w.walletId]);
+        const { rows: left } = await db.query(
+          `SELECT COUNT(*)::int AS n FROM outbox_messages WHERE aggregate_id = $1 AND published_at IS NULL`,
+          [w.walletId],
+        );
         return left[0].n === 0;
       });
       const ready = await new ApiClient(broken.baseUrl).request('GET', '/health/ready');
       expect(ready.status).toBe(503);
-      expect(ready.body.checks.sqs.ok).toBe(false);
+      expect(((ready.body.checks as JsonObject).sqs as JsonObject).ok).toBe(false);
     } finally {
       await broken.close();
       await healthy.close();
@@ -171,7 +211,9 @@ describe('transactional outbox relay', () => {
       const wallets = await Promise.all(Array.from({ length: 10 }, () => api.createWallet('50.00')));
       await Promise.all(wallets.map((w) => api.submit(wager(w, 'BET', '5.00'))));
       const ids = wallets.map((w) => w.walletId);
-      const { rows: expected } = await db.query<{ id: string }>(`SELECT id FROM outbox_messages WHERE aggregate_id = ANY($1::uuid[])`, [ids]);
+      const { rows: expected } = await db.query<{ id: string }>(`SELECT id FROM outbox_messages WHERE aggregate_id = ANY($1::uuid[])`, [
+        ids,
+      ]);
       expect(expected.length).toBe(40);
 
       let publishedA = 0;
@@ -183,7 +225,14 @@ describe('transactional outbox relay', () => {
           add(n);
         }
       };
-      await Promise.all([loop(relayA, (n) => (publishedA += n)), loop(relayB, (n) => (publishedB += n))]);
+      await Promise.all([
+        loop(relayA, (n) => {
+          publishedA += n;
+        }),
+        loop(relayB, (n) => {
+          publishedB += n;
+        }),
+      ]);
       expect(publishedA + publishedB).toBe(40); // each row marked published exactly once
       expect(publishedA).toBeGreaterThan(0);
       expect(publishedB).toBeGreaterThan(0);

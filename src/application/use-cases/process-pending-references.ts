@@ -1,3 +1,9 @@
+/**
+ * @file process-pending-references.ts
+ * @author Pablo Reis Rebonato
+ * @description Background use case that leases due PENDING_REFERENCE transactions and settles them through the shared settlement path.
+ */
+
 import { WagerTransactionStatus } from '../../domain';
 import type { Clock, IdGenerator, LoggerPort, MetricsPort, UnitOfWork } from '../ports';
 import type { WagerSettlement } from './wager-settlement';
@@ -43,6 +49,7 @@ export class ProcessPendingReferences {
     return settled;
   }
 
+  /** Re-evaluates one parked transaction under its wallet lock; returns true when it left PENDING_REFERENCE. */
   async processOne(transactionId: string, walletId: string): Promise<boolean> {
     const started = performance.now();
     const result = await this.uow.run({ name: 'process-pending-reference' }, async (repos) => {

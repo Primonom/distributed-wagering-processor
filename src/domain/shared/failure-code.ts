@@ -1,4 +1,10 @@
 /**
+ * @file failure-code.ts
+ * @author Pablo Reis Rebonato
+ * @description Stable public failure codes and the action each one asks of the game provider.
+ */
+
+/**
  * Stable, machine-readable rejection/failure codes. They are part of the public
  * contract: never rename a value, only add new ones.
  *
@@ -43,6 +49,7 @@ export const FAILURE_CODE_ACTION: Readonly<Record<FailureCode, ProviderAction>> 
 
 const ALL = new Set<string>(Object.values(FailureCode));
 
+/** Type guard for values read from storage or the wire. */
 export function isFailureCode(value: string): value is FailureCode {
   return ALL.has(value);
 }

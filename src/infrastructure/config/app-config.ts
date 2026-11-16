@@ -1,3 +1,9 @@
+/**
+ * @file app-config.ts
+ * @author Pablo Reis Rebonato
+ * @description Environment configuration schema (zod) with defaults and validation for every runtime setting.
+ */
+
 import { hostname } from 'node:os';
 import { z } from 'zod';
 

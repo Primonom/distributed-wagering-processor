@@ -1,4 +1,9 @@
-/** Reads (and deletes) the integration events currently on the events queue. */
+/**
+ * @file read-events.ts
+ * @author Pablo Reis Rebonato
+ * @description Drains the integration events queue and prints one line per event for manual inspection.
+ */
+
 import { DeleteMessageCommand, GetQueueUrlCommand, ReceiveMessageCommand } from '@aws-sdk/client-sqs';
 import { loadConfig } from '../src/infrastructure/config/app-config';
 import { createSqsClient } from '../src/infrastructure/messaging/sqs';

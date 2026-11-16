@@ -1,3 +1,9 @@
+/**
+ * @file db.ts
+ * @author Pablo Reis Rebonato
+ * @description Test database helpers: migrations, raw SQL clients and wallet consistency assertions.
+ */
+
 import { expect } from 'bun:test';
 import { createHash, randomUUID } from 'node:crypto';
 import pg from 'pg';
@@ -5,8 +11,7 @@ import { v7 as uuidv7 } from 'uuid';
 import { loadConfig } from '../../src/infrastructure/config/app-config';
 import { createOrm } from '../../src/infrastructure/persistence/mikro-orm';
 
-export const TEST_DATABASE_URL =
-  process.env.TEST_DATABASE_URL ?? 'postgres://wallet:wallet@localhost:5432/wallet_test';
+export const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL ?? 'postgres://wallet:wallet@localhost:5432/wallet_test';
 
 let migrated = false;
 
@@ -31,7 +36,10 @@ export function newPool(url = TEST_DATABASE_URL, max = 4): pg.Pool {
   return new pg.Pool({ connectionString: url, max });
 }
 
-export async function expectPgError(promise: Promise<unknown>, expected: { code?: string; constraint?: string; message?: RegExp }): Promise<void> {
+export async function expectPgError(
+  promise: Promise<unknown>,
+  expected: { code?: string; constraint?: string; message?: RegExp },
+): Promise<void> {
   let caught: (Error & { code?: string; constraint?: string }) | undefined;
   try {
     await promise;

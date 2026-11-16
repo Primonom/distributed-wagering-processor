@@ -1,3 +1,9 @@
+/**
+ * @file wager-processor.ts
+ * @author Pablo Reis Rebonato
+ * @description Pure business rules that decide how a wager operation affects a wallet.
+ */
+
 import { LedgerDirection, WalletLedgerEntry } from '../ledger/wallet-ledger-entry';
 import { InvariantViolationError } from '../shared/errors';
 import { FailureCode } from '../shared/failure-code';
@@ -25,6 +31,10 @@ export type WagerDecision =
 export class WagerProcessor {
   private constructor() {}
 
+  /**
+   * Returns PROCESS (with the ledger direction), REJECT (with a failure code) or WAIT_FOR_REFERENCE; never mutates its inputs.
+   * @throws InvariantViolationError when called with a wallet or reference that does not belong to `tx`.
+   */
   static decide(tx: WagerTransaction, wallet: Wallet, ctx: ReferenceContext): WagerDecision {
     if (tx.walletId !== wallet.id) {
       throw new InvariantViolationError('transaction evaluated against the wrong wallet');
@@ -42,10 +52,7 @@ export class WagerProcessor {
       if (!reference) {
         return { outcome: 'WAIT_FOR_REFERENCE', reason: 'NOT_FOUND' };
       }
-      if (
-        reference.providerId !== tx.providerId ||
-        reference.externalTransactionId !== tx.referenceExternalTransactionId
-      ) {
+      if (reference.providerId !== tx.providerId || reference.externalTransactionId !== tx.referenceExternalTransactionId) {
         throw new InvariantViolationError('reference resolved with the wrong key');
       }
       if (!tx.allowsReferenceKind(reference.kind)) {
@@ -59,10 +66,7 @@ export class WagerProcessor {
       ) {
         return { outcome: 'REJECT', code: FailureCode.ReferenceMismatch, reference };
       }
-      if (
-        reference.status === WagerTransactionStatus.Pending ||
-        reference.status === WagerTransactionStatus.PendingReference
-      ) {
+      if (reference.status === WagerTransactionStatus.Pending || reference.status === WagerTransactionStatus.PendingReference) {
         return { outcome: 'WAIT_FOR_REFERENCE', reason: 'NOT_YET_PROCESSED' };
       }
       if (reference.status !== WagerTransactionStatus.Processed) {
@@ -83,8 +87,7 @@ export class WagerProcessor {
     }
     const direction = tx.ledgerDirectionFor(reference);
     if (direction === LedgerDirection.Debit && !wallet.canDebit(tx.money)) {
-      const code =
-        tx.kind === WagerTransactionKind.Bet ? FailureCode.InsufficientFunds : FailureCode.ReversalWouldOverdraw;
+      const code = tx.kind === WagerTransactionKind.Bet ? FailureCode.InsufficientFunds : FailureCode.ReversalWouldOverdraw;
       return { outcome: 'REJECT', code, reference };
     }
     return { outcome: 'PROCESS', direction, reference };

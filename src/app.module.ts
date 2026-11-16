@@ -1,3 +1,9 @@
+/**
+ * @file app.module.ts
+ * @author Pablo Reis Rebonato
+ * @description Composition root that wires ports to adapters, use cases, controllers and background workers for one application instance.
+ */
+
 import { randomUUID } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { SQSClient } from '@aws-sdk/client-sqs';
@@ -14,7 +20,7 @@ import {
 } from '@nestjs/common';
 import { APP_FILTER } from '@nestjs/core';
 import { LoggerModule } from 'nestjs-pino';
-import { PORTS, type Clock, type IdGenerator, type LoggerPort, type MetricsPort, type UnitOfWork } from './application/ports';
+import { type Clock, type IdGenerator, type LoggerPort, type MetricsPort, PORTS, type UnitOfWork } from './application/ports';
 import { CreateWallet } from './application/use-cases/create-wallet';
 import { ProcessPendingReferences } from './application/use-cases/process-pending-references';
 import { PublishOutbox } from './application/use-cases/publish-outbox';
@@ -24,8 +30,8 @@ import { SubmitWagerTransaction } from './application/use-cases/submit-wager-tra
 import { WagerSettlement } from './application/use-cases/wager-settlement';
 import { BackoffPolicy } from './domain';
 import { APP_CONFIG, type AppConfig } from './infrastructure/config/app-config';
-import { QueueRegistry, SqsEventPublisher, createSqsClient } from './infrastructure/messaging/sqs';
-import { PinoLoggerAdapter, createRootLogger } from './infrastructure/observability/logging';
+import { createSqsClient, QueueRegistry, SqsEventPublisher } from './infrastructure/messaging/sqs';
+import { createRootLogger, PinoLoggerAdapter } from './infrastructure/observability/logging';
 import { PrometheusMetrics } from './infrastructure/observability/metrics';
 import { createOrm } from './infrastructure/persistence/mikro-orm';
 import { MikroOrmUnitOfWork } from './infrastructure/persistence/unit-of-work';
@@ -56,6 +62,7 @@ class LifecycleHooks implements OnApplicationBootstrap, BeforeApplicationShutdow
 }
 
 @Module({})
+// biome-ignore lint/complexity/noStaticOnlyClass: Nest dynamic modules are configured through a static forRoot() on the @Module class.
 export class AppModule {
   static forRoot(config: AppConfig): DynamicModule {
     const rootLogger = createRootLogger(config.LOG_LEVEL, config.INSTANCE_ID);
@@ -94,7 +101,12 @@ export class AppModule {
         inject: [PORTS.IdGenerator],
         useFactory: (ids: IdGenerator) =>
           new WagerSettlement(ids, {
-            backoff: BackoffPolicy.create({ baseMs: config.PENDING_RETRY_BASE_MS, factor: 2, maxMs: Math.max(config.PENDING_RETRY_BASE_MS, config.PENDING_RETRY_MAX_MS), jitter: true }),
+            backoff: BackoffPolicy.create({
+              baseMs: config.PENDING_RETRY_BASE_MS,
+              factor: 2,
+              maxMs: Math.max(config.PENDING_RETRY_BASE_MS, config.PENDING_RETRY_MAX_MS),
+              jitter: true,
+            }),
             maxAttempts: config.PENDING_MAX_ATTEMPTS,
           }),
       },
@@ -118,7 +130,8 @@ export class AppModule {
       {
         provide: RecordPermanentFailure,
         inject: [PORTS.UnitOfWork, PORTS.Clock, PORTS.IdGenerator],
-        useFactory: (uow: UnitOfWork, clock: Clock, ids: IdGenerator) => new RecordPermanentFailure(uow, clock, ids, loggerFor('record-failure')),
+        useFactory: (uow: UnitOfWork, clock: Clock, ids: IdGenerator) =>
+          new RecordPermanentFailure(uow, clock, ids, loggerFor('record-failure')),
       },
       {
         provide: ProcessPendingReferences,
@@ -135,7 +148,12 @@ export class AppModule {
         useFactory: (uow: UnitOfWork, publisher: SqsEventPublisher, clock: Clock, m: MetricsPort) =>
           new PublishOutbox(uow, publisher, clock, m, loggerFor('outbox'), {
             batchSize: config.OUTBOX_BATCH_SIZE,
-            retryPolicy: BackoffPolicy.create({ baseMs: config.OUTBOX_RETRY_BASE_MS, factor: 2, maxMs: Math.max(config.OUTBOX_RETRY_BASE_MS, config.OUTBOX_RETRY_MAX_MS), jitter: true }),
+            retryPolicy: BackoffPolicy.create({
+              baseMs: config.OUTBOX_RETRY_BASE_MS,
+              factor: 2,
+              maxMs: Math.max(config.OUTBOX_RETRY_BASE_MS, config.OUTBOX_RETRY_MAX_MS),
+              jitter: true,
+            }),
             afterPublish:
               config.FAULT_INJECTION === 'crash_after_publish'
                 ? () => {
@@ -148,7 +166,13 @@ export class AppModule {
       {
         provide: WagerQueueConsumer,
         inject: [TOKENS.Sqs, TOKENS.Queues, SubmitWagerTransaction, RecordPermanentFailure, PORTS.Metrics],
-        useFactory: (sqs: SQSClient, queues: QueueRegistry, submit: SubmitWagerTransaction, record: RecordPermanentFailure, m: MetricsPort) =>
+        useFactory: (
+          sqs: SQSClient,
+          queues: QueueRegistry,
+          submit: SubmitWagerTransaction,
+          record: RecordPermanentFailure,
+          m: MetricsPort,
+        ) =>
           new WagerQueueConsumer(sqs, queues, submit, record, m, loggerFor('sqs-consumer'), {
             consumerName: config.CONSUMER_NAME,
             maxMessages: config.CONSUMER_CONCURRENCY,
@@ -163,13 +187,22 @@ export class AppModule {
       {
         provide: Lifecycle,
         inject: [TOKENS.Orm, TOKENS.Sqs, TOKENS.Queues, WagerQueueConsumer, PublishOutbox, ProcessPendingReferences],
-        useFactory: (orm: MikroORM, sqs: SQSClient, queues: QueueRegistry, consumer: WagerQueueConsumer, outbox: PublishOutbox, pending: ProcessPendingReferences) => {
+        useFactory: (
+          orm: MikroORM,
+          sqs: SQSClient,
+          queues: QueueRegistry,
+          consumer: WagerQueueConsumer,
+          outbox: PublishOutbox,
+          pending: ProcessPendingReferences,
+        ) => {
           const workerLogger: LoggerPort = loggerFor('workers');
           const workers: PollingWorker[] = [
             new PollingWorker('outbox-gauges', config.METRICS_GAUGE_INTERVAL_MS, () => outbox.refreshGauges(), workerLogger),
           ];
-          if (config.OUTBOX_ENABLED) workers.push(new PollingWorker('outbox-relay', config.OUTBOX_POLL_MS, () => outbox.runOnce(), workerLogger));
-          if (config.PENDING_WORKER_ENABLED) workers.push(new PollingWorker('pending-references', config.PENDING_POLL_MS, () => pending.runOnce(), workerLogger));
+          if (config.OUTBOX_ENABLED)
+            workers.push(new PollingWorker('outbox-relay', config.OUTBOX_POLL_MS, () => outbox.runOnce(), workerLogger));
+          if (config.PENDING_WORKER_ENABLED)
+            workers.push(new PollingWorker('pending-references', config.PENDING_POLL_MS, () => pending.runOnce(), workerLogger));
           return new Lifecycle(config, orm, sqs, queues, consumer, workers, loggerFor('lifecycle'));
         },
       },

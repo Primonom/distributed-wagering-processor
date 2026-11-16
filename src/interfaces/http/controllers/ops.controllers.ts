@@ -1,11 +1,17 @@
+/**
+ * @file ops.controllers.ts
+ * @author Pablo Reis Rebonato
+ * @description Operational HTTP endpoints: liveness, readiness and Prometheus metrics.
+ */
+
 import { GetQueueUrlCommand, SQSClient } from '@aws-sdk/client-sqs';
-import { Controller, Get, Header, Inject, Res } from '@nestjs/common';
 import type { MikroORM } from '@mikro-orm/core';
+import { Controller, Get, Header, Inject, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import { APP_CONFIG, type AppConfig } from '../../../infrastructure/config/app-config';
 import { PrometheusMetrics } from '../../../infrastructure/observability/metrics';
-import { Lifecycle } from '../../../infrastructure/workers/lifecycle';
 import { TOKENS } from '../../../infrastructure/tokens';
+import { Lifecycle } from '../../../infrastructure/workers/lifecycle';
 
 /** Health endpoints are public (no guard). */
 @Controller('health')
@@ -45,7 +51,11 @@ export class HealthController {
       await Promise.race([fn(), Bun.sleep(2000).then(() => Promise.reject(new Error('timeout')))]);
       return { ok: true, latencyMs: Math.round(performance.now() - started) };
     } catch (error) {
-      return { ok: false, latencyMs: Math.round(performance.now() - started), error: error instanceof Error ? error.message : String(error) };
+      return {
+        ok: false,
+        latencyMs: Math.round(performance.now() - started),
+        error: error instanceof Error ? error.message : String(error),
+      };
     }
   }
 }

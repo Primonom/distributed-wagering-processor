@@ -1,16 +1,15 @@
+/**
+ * @file atomicity.test.ts
+ * @author Pablo Reis Rebonato
+ * @description Integration tests proving wallet, ledger, inbox and outbox writes commit or roll back together.
+ */
+
 import { afterAll, beforeAll, expect, test } from 'bun:test';
 import type pg from 'pg';
 import { PORTS, type UnitOfWork } from '../../src/application/ports';
-import {
-  InboxMessage,
-  Money,
-  OutboxMessage,
-  WagerTransaction,
-  WagerTransactionKind,
-  WalletBalanceChanged,
-} from '../../src/domain';
+import { InboxMessage, Money, OutboxMessage, WagerTransaction, WagerTransactionKind, WalletBalanceChanged } from '../../src/domain';
 import { ApiClient } from '../helpers/api';
-import { type TestApp, startTestApp } from '../helpers/app';
+import { startTestApp, type TestApp } from '../helpers/app';
 import { assertWalletConsistent, hash, id, newPool } from '../helpers/db';
 
 let t: TestApp;
@@ -30,13 +29,25 @@ afterAll(async () => {
 async function writeEverything(uow: UnitOfWork, walletId: string, messageId: string, failAtTheEnd: boolean) {
   await uow.run({ name: 'atomicity-test', retryOnConflict: false }, async (repos) => {
     const now = new Date();
-    await repos.inbox.tryInsert(InboxMessage.rehydrate({ messageId, consumerName: 'atomicity', payloadHash: hash(), receivedAt: now, processedAt: now }));
+    await repos.inbox.tryInsert(
+      InboxMessage.rehydrate({ messageId, consumerName: 'atomicity', payloadHash: hash(), receivedAt: now, processedAt: now }),
+    );
     const wallet = await repos.wallets.findByIdForUpdate(walletId);
     if (!wallet) throw new Error('wallet missing');
     const tx = WagerTransaction.create({
-      id: id(), providerId: 'atomic', externalTransactionId: `ext-${messageId}`, idempotencyKey: `atomic:${messageId}`, payloadHash: hash(),
-      walletId, playerId: wallet.playerId, roundId: 'r', gameId: 'g', kind: WagerTransactionKind.Bet,
-      money: Money.from({ amount: '10.00', currency: 'BRL' }), correlationId: 'c', createdAt: now,
+      id: id(),
+      providerId: 'atomic',
+      externalTransactionId: `ext-${messageId}`,
+      idempotencyKey: `atomic:${messageId}`,
+      payloadHash: hash(),
+      walletId,
+      playerId: wallet.playerId,
+      roundId: 'r',
+      gameId: 'g',
+      kind: WagerTransactionKind.Bet,
+      money: Money.from({ amount: '10.00', currency: 'BRL' }),
+      correlationId: 'c',
+      createdAt: now,
     });
     const version = wallet.version;
     const entry = wallet.debit(tx.money, { entryId: id(), transactionId: tx.id, at: now });
@@ -44,7 +55,9 @@ async function writeEverything(uow: UnitOfWork, walletId: string, messageId: str
     await repos.transactions.insert(tx);
     await repos.wallets.updateBalance(wallet, version);
     await repos.ledger.insert(entry);
-    await repos.outbox.insertMany([OutboxMessage.enqueue(WalletBalanceChanged.from(wallet, entry, { nextId: id, correlationId: 'c', occurredAt: now }))]);
+    await repos.outbox.insertMany([
+      OutboxMessage.enqueue(WalletBalanceChanged.from(wallet, entry, { nextId: id, correlationId: 'c', occurredAt: now })),
+    ]);
     if (failAtTheEnd) throw new Error('simulated crash before COMMIT');
   });
 }

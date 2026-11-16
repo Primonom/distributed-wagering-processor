@@ -1,6 +1,13 @@
+/**
+ * @file mappers.ts
+ * @author Pablo Reis Rebonato
+ * @description Mappers between persistence records and domain objects, including Money to NUMERIC string conversion.
+ */
+
 import {
   FailureCode,
   InboxMessage,
+  isFailureCode,
   LedgerDirection,
   Money,
   OutboxMessage,
@@ -9,15 +16,8 @@ import {
   WagerTransactionStatus,
   Wallet,
   WalletLedgerEntry,
-  isFailureCode,
 } from '../../domain';
-import type {
-  InboxMessageRecord,
-  LedgerEntryRecord,
-  OutboxMessageRecord,
-  WagerTransactionRecord,
-  WalletRecord,
-} from './entities/schemas';
+import type { InboxMessageRecord, LedgerEntryRecord, OutboxMessageRecord, WagerTransactionRecord, WalletRecord } from './entities/schemas';
 
 /** NUMERIC(20,2) is returned as string; normalise in case a driver ever returns fewer decimals. */
 const money = (amount: string, currency: string) => Money.fromPersisted(String(amount), currency.trim());

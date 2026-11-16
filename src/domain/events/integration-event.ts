@@ -1,3 +1,9 @@
+/**
+ * @file integration-event.ts
+ * @author Pablo Reis Rebonato
+ * @description Abstract integration event envelope with identity, versioning, correlation and aggregate metadata.
+ */
+
 export interface IntegrationEventProps<T> {
   eventId: string;
   aggregateId: string;
@@ -62,6 +68,7 @@ export abstract class IntegrationEvent<T> {
     };
   }
 
+  /** Serialised envelope published on the events queue. */
   toJSON(): IntegrationEventEnvelope<T> {
     const envelope: IntegrationEventEnvelope<T> = {
       eventId: this.eventId,

@@ -1,3 +1,9 @@
+/**
+ * @file Migration20261116000001_wallets_and_transactions.ts
+ * @author Pablo Reis Rebonato
+ * @description Reversible migration creating wallets and wager_transactions with their constraints and state machine trigger.
+ */
+
 import { Migration } from '@mikro-orm/migrations';
 
 /**

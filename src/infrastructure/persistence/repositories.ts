@@ -1,3 +1,9 @@
+/**
+ * @file repositories.ts
+ * @author Pablo Reis Rebonato
+ * @description SQL-backed repository implementations, including row locks and SKIP LOCKED claims.
+ */
+
 import { LockMode } from '@mikro-orm/core';
 import type { EntityManager } from '@mikro-orm/postgresql';
 import { ConcurrencyConflictError } from '../../application/errors/application-errors';
@@ -20,12 +26,7 @@ import {
   Wallet,
   WalletLedgerEntry,
 } from '../../domain';
-import {
-  LedgerEntrySchema,
-  OutboxMessageSchema,
-  WagerTransactionSchema,
-  WalletSchema,
-} from './entities/schemas';
+import { LedgerEntrySchema, OutboxMessageSchema, WagerTransactionSchema, WalletSchema } from './entities/schemas';
 import { InboxMapper, LedgerEntryMapper, OutboxMapper, WagerTransactionMapper, WalletMapper } from './mappers';
 
 class MikroOrmWalletRepository implements WalletRepository {
@@ -210,7 +211,10 @@ class MikroOrmOutboxRepository implements OutboxRepository {
 
   async insertMany(messages: OutboxMessage[]): Promise<void> {
     if (messages.length === 0) return;
-    await this.em.insertMany(OutboxMessageSchema, messages.map((m) => OutboxMapper.toRecord(m)));
+    await this.em.insertMany(
+      OutboxMessageSchema,
+      messages.map((m) => OutboxMapper.toRecord(m)),
+    );
   }
 
   async lockDueBatch(now: Date, limit: number): Promise<OutboxMessage[]> {

@@ -1,3 +1,9 @@
+/**
+ * @file outbox-message.ts
+ * @author Pablo Reis Rebonato
+ * @description Outbox record that holds an integration event until it is published, with retry scheduling.
+ */
+
 import { IntegrationEvent } from '../events/integration-event';
 import { BackoffPolicy, DEFAULT_OUTBOX_BACKOFF } from '../shared/backoff';
 import { InvalidTransactionStateError } from '../shared/errors';
@@ -32,6 +38,7 @@ export class OutboxMessage {
     private _lastError?: string,
   ) {}
 
+  /** Wraps an event for publication; the outbox id is the eventId. */
   static enqueue(event: IntegrationEvent<unknown>): OutboxMessage {
     const payload = event.toJSON() as unknown as Record<string, unknown>;
     return new OutboxMessage(
@@ -45,6 +52,7 @@ export class OutboxMessage {
     );
   }
 
+  /** Reconstruction from persistence without validation. */
   static rehydrate(state: OutboxMessageState): OutboxMessage {
     return new OutboxMessage(
       state.id,
@@ -59,19 +67,29 @@ export class OutboxMessage {
     );
   }
 
-  get attempts(): number { return this._attempts; }
-  get nextAttemptAt(): Date | undefined { return this._nextAttemptAt; }
-  get publishedAt(): Date | undefined { return this._publishedAt; }
-  get lastError(): string | undefined { return this._lastError; }
+  get attempts(): number {
+    return this._attempts;
+  }
+  get nextAttemptAt(): Date | undefined {
+    return this._nextAttemptAt;
+  }
+  get publishedAt(): Date | undefined {
+    return this._publishedAt;
+  }
+  get lastError(): string | undefined {
+    return this._lastError;
+  }
 
   isPending(): boolean {
     return this._publishedAt === undefined;
   }
 
+  /** Pending and its next attempt time has been reached. */
   isDue(now: Date): boolean {
     return this.isPending() && (this._nextAttemptAt === undefined || this._nextAttemptAt.getTime() <= now.getTime());
   }
 
+  /** Marks the event delivered to the broker (at-least-once: it may already have been delivered before). */
   markPublished(at: Date): void {
     if (!this.isPending()) {
       throw new InvalidTransactionStateError(`outbox message ${this.id} already published`);

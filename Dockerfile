@@ -1,3 +1,7 @@
+# @file Dockerfile
+# @author Pablo Reis Rebonato
+# @description Production image of the wagering service running on Bun as a non-root user.
+
 FROM oven/bun:1.4.4-alpine
 WORKDIR /app
 COPY package.json bun.lock ./

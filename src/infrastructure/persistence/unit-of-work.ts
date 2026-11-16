@@ -1,16 +1,13 @@
+/**
+ * @file unit-of-work.ts
+ * @author Pablo Reis Rebonato
+ * @description Unit of work over MikroORM transactions with lock timeout and retry on transient conflicts.
+ */
+
 import type { MikroORM } from '@mikro-orm/core';
 import type { EntityManager, PostgreSqlDriver } from '@mikro-orm/postgresql';
-import {
-  ConcurrencyConflictError,
-  TransientInfrastructureError,
-} from '../../application/errors/application-errors';
-import type {
-  LoggerPort,
-  MetricsPort,
-  TransactionalRepositories,
-  UnitOfWork,
-  UnitOfWorkOptions,
-} from '../../application/ports';
+import { ConcurrencyConflictError, TransientInfrastructureError } from '../../application/errors/application-errors';
+import type { LoggerPort, MetricsPort, TransactionalRepositories, UnitOfWork, UnitOfWorkOptions } from '../../application/ports';
 import { BackoffPolicy } from '../../domain';
 import { translateDbError } from './db-errors';
 import { createRepositories } from './repositories';
@@ -63,12 +60,21 @@ export class MikroOrmUnitOfWork implements UnitOfWork {
           if (attempt < maxRetries) {
             this.metrics.retry(error.reason);
             const delay = this.backoff.delayFor(attempt + 1);
-            this.logger.debug({ uow: options.name, attempt: attempt + 1, reason: error.reason, delayMs: delay }, 'retrying unit of work after concurrency conflict');
+            this.logger.debug(
+              { uow: options.name, attempt: attempt + 1, reason: error.reason, delayMs: delay },
+              'retrying unit of work after concurrency conflict',
+            );
             await Bun.sleep(delay);
             continue;
           }
-          this.logger.warn({ uow: options.name, attempts: attempt + 1, reason: error.reason }, 'unit of work gave up after concurrency conflicts');
-          throw new TransientInfrastructureError(`${options.name}: concurrency conflict persisted after ${attempt + 1} attempts (${error.reason})`, error);
+          this.logger.warn(
+            { uow: options.name, attempts: attempt + 1, reason: error.reason },
+            'unit of work gave up after concurrency conflicts',
+          );
+          throw new TransientInfrastructureError(
+            `${options.name}: concurrency conflict persisted after ${attempt + 1} attempts (${error.reason})`,
+            error,
+          );
         }
         throw error;
       }

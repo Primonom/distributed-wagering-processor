@@ -1,3 +1,9 @@
+/**
+ * @file http-exception.filter.ts
+ * @author Pablo Reis Rebonato
+ * @description Global exception filter that maps application and domain errors to HTTP responses.
+ */
+
 import { ArgumentsHost, Catch, ExceptionFilter, HttpException, Inject } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import {
@@ -9,7 +15,7 @@ import {
   TransientInfrastructureError,
   WalletAlreadyExistsError,
 } from '../../../application/errors/application-errors';
-import { PORTS, type LoggerPort } from '../../../application/ports';
+import { type LoggerPort, PORTS } from '../../../application/ports';
 import { DomainError, InvalidMoneyError, InvalidWagerTransactionError } from '../../../domain';
 
 interface ErrorBody {

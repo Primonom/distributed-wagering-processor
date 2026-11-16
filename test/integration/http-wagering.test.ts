@@ -1,7 +1,13 @@
+/**
+ * @file http-wagering.test.ts
+ * @author Pablo Reis Rebonato
+ * @description Integration tests for the HTTP API: wallets, wager rules, idempotency, queries, reconciliation and ops endpoints.
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import type pg from 'pg';
-import { ApiClient, wager } from '../helpers/api';
-import { type TestApp, startTestApp } from '../helpers/app';
+import { ApiClient, type JsonObject, wager } from '../helpers/api';
+import { startTestApp, type TestApp } from '../helpers/app';
 import { assertWalletConsistent, newPool } from '../helpers/db';
 
 let t: TestApp;
@@ -23,7 +29,10 @@ const ledgerCount = async (walletId: string) =>
 
 describe('POST /wallets', () => {
   test('creates the wallet with an OPENING transaction and CREDIT line in one transaction', async () => {
-    const res = await api.request('POST', '/wallets', { playerId: 'player-open-1-' + Date.now(), initialBalance: { amount: '1000.00', currency: 'BRL' } });
+    const res = await api.request('POST', '/wallets', {
+      playerId: `player-open-1-${Date.now()}`,
+      initialBalance: { amount: '1000.00', currency: 'BRL' },
+    });
     expect(res.status).toBe(201);
     expect(res.body).toMatchObject({ balance: { amount: '1000.00', currency: 'BRL' }, version: 1 });
     const walletId = res.body.id as string;
@@ -59,7 +68,7 @@ describe('POST /wallets', () => {
   ])('invalid initial balance %p → 400', async (initialBalance) => {
     const res = await api.request('POST', '/wallets', { playerId: 'p-invalid', initialBalance });
     expect(res.status).toBe(400);
-    expect(['INVALID_PAYLOAD', 'INVALID_MONEY']).toContain(res.body.code);
+    expect(['INVALID_PAYLOAD', 'INVALID_MONEY']).toContain(res.body.code as string);
   });
 
   test('malformed JSON → 400', async () => {
@@ -97,8 +106,8 @@ describe('POST /wagering/transactions', () => {
   test('same Idempotency-Key with a different payload → 409, not a replay', async () => {
     const w = await api.createWallet('100.00');
     const bet = wager(w, 'BET', '10.00');
-    await api.submit(bet, 'key-' + bet.externalTransactionId);
-    const conflict = await api.submit({ ...bet, money: { amount: '10.01', currency: 'BRL' } }, 'key-' + bet.externalTransactionId);
+    await api.submit(bet, `key-${bet.externalTransactionId}`);
+    const conflict = await api.submit({ ...bet, money: { amount: '10.01', currency: 'BRL' } }, `key-${bet.externalTransactionId}`);
     expect(conflict.status).toBe(409);
     expect(conflict.body.code).toBe('IDEMPOTENCY_KEY_PAYLOAD_MISMATCH');
     expect(await ledgerCount(w.walletId)).toBe(2);
@@ -107,8 +116,8 @@ describe('POST /wagering/transactions', () => {
   test('same external id under another Idempotency-Key → 409 EXTERNAL_TRANSACTION_ID_CONFLICT', async () => {
     const w = await api.createWallet('100.00');
     const bet = wager(w, 'BET', '10.00');
-    await api.submit(bet, 'k1-' + bet.externalTransactionId);
-    const res = await api.submit(bet, 'k2-' + bet.externalTransactionId);
+    await api.submit(bet, `k1-${bet.externalTransactionId}`);
+    const res = await api.submit(bet, `k2-${bet.externalTransactionId}`);
     expect(res.status).toBe(409);
     expect(res.body.code).toBe('EXTERNAL_TRANSACTION_ID_CONFLICT');
   });
@@ -133,12 +142,18 @@ describe('POST /wagering/transactions', () => {
     const w = await api.createWallet('10.00');
     const res = await api.submit(wager(w, 'BET', '10.01'));
     expect(res.status).toBe(422);
-    expect(res.body).toMatchObject({ status: 'REJECTED', failureCode: 'INSUFFICIENT_FUNDS', balance: { amount: '10.00' }, idempotentReplay: false, providerAction: 'GIVE_UP' });
+    expect(res.body).toMatchObject({
+      status: 'REJECTED',
+      failureCode: 'INSUFFICIENT_FUNDS',
+      balance: { amount: '10.00' },
+      idempotentReplay: false,
+      providerAction: 'GIVE_UP',
+    });
     expect(typeof res.body.transactionId).toBe('string');
     const tx = await api.request('GET', `/wagering/transactions/${res.body.transactionId}`);
     expect(tx.body).toMatchObject({ status: 'REJECTED', failureCode: 'INSUFFICIENT_FUNDS' });
     expect(await ledgerCount(w.walletId)).toBe(1);
-    const replay = await api.submit(wager(w, 'BET', '10.01', { externalTransactionId: tx.body.externalTransactionId }));
+    const replay = await api.submit(wager(w, 'BET', '10.01', { externalTransactionId: tx.body.externalTransactionId as string }));
     expect(replay.status).toBe(422);
     expect(replay.body.idempotentReplay).toBe(true);
   });
@@ -183,7 +198,10 @@ describe('POST /wagering/transactions', () => {
     expect(again.body.failureCode).toBe('ALREADY_REVERSED');
     const rollback = await api.submit(wager(w, 'ROLLBACK', '40.00', { referenceExternalTransactionId: bet.externalTransactionId }));
     expect(rollback.body.failureCode).toBe('ALREADY_REVERSED');
-    const { rows } = await db.query(`SELECT COUNT(*)::int AS n FROM wager_transactions WHERE reference_transaction_id = (SELECT id FROM wager_transactions WHERE external_transaction_id = $1) AND status = 'PROCESSED'`, [bet.externalTransactionId]);
+    const { rows } = await db.query(
+      `SELECT COUNT(*)::int AS n FROM wager_transactions WHERE reference_transaction_id = (SELECT id FROM wager_transactions WHERE external_transaction_id = $1) AND status = 'PROCESSED'`,
+      [bet.externalTransactionId],
+    );
     expect(rows[0].n).toBe(1);
     await assertWalletConsistent(db, w.walletId);
   });
@@ -194,11 +212,20 @@ describe('POST /wagering/transactions', () => {
     await api.submit(bet);
     const win = wager(w, 'WIN', '5.00');
     await api.submit(win);
-    expect((await api.submit(wager(w, 'REFUND', '9.99', { referenceExternalTransactionId: bet.externalTransactionId }))).body.failureCode).toBe('AMOUNT_MISMATCH');
-    expect((await api.submit(wager(w, 'REFUND', '5.00', { referenceExternalTransactionId: win.externalTransactionId }))).body.failureCode).toBe('INVALID_REFERENCE_KIND');
-    expect((await api.submit(wager(w, 'REFUND', '10.00', { roundId: 'other', referenceExternalTransactionId: bet.externalTransactionId }))).body.failureCode).toBe('REFERENCE_MISMATCH');
+    expect(
+      (await api.submit(wager(w, 'REFUND', '9.99', { referenceExternalTransactionId: bet.externalTransactionId }))).body.failureCode,
+    ).toBe('AMOUNT_MISMATCH');
+    expect(
+      (await api.submit(wager(w, 'REFUND', '5.00', { referenceExternalTransactionId: win.externalTransactionId }))).body.failureCode,
+    ).toBe('INVALID_REFERENCE_KIND');
+    expect(
+      (await api.submit(wager(w, 'REFUND', '10.00', { roundId: 'other', referenceExternalTransactionId: bet.externalTransactionId }))).body
+        .failureCode,
+    ).toBe('REFERENCE_MISMATCH');
     const other = await api.createWallet('100.00');
-    expect((await api.submit(wager(other, 'REFUND', '10.00', { referenceExternalTransactionId: bet.externalTransactionId }))).body.failureCode).toBe('REFERENCE_MISMATCH');
+    expect(
+      (await api.submit(wager(other, 'REFUND', '10.00', { referenceExternalTransactionId: bet.externalTransactionId }))).body.failureCode,
+    ).toBe('REFERENCE_MISMATCH');
     await assertWalletConsistent(db, w.walletId);
   });
 
@@ -206,15 +233,21 @@ describe('POST /wagering/transactions', () => {
     const w = await api.createWallet('100.00');
     const bet = wager(w, 'BET', '30.00');
     await api.submit(bet);
-    expect((await api.submit(wager(w, 'ROLLBACK', '30.00', { referenceExternalTransactionId: bet.externalTransactionId }))).body.balance).toEqual({ amount: '100.00', currency: 'BRL' });
+    expect(
+      (await api.submit(wager(w, 'ROLLBACK', '30.00', { referenceExternalTransactionId: bet.externalTransactionId }))).body.balance,
+    ).toEqual({ amount: '100.00', currency: 'BRL' });
     const win = wager(w, 'WIN', '20.00');
     await api.submit(win);
-    expect((await api.submit(wager(w, 'ROLLBACK', '20.00', { referenceExternalTransactionId: win.externalTransactionId }))).body.balance).toEqual({ amount: '100.00', currency: 'BRL' });
+    expect(
+      (await api.submit(wager(w, 'ROLLBACK', '20.00', { referenceExternalTransactionId: win.externalTransactionId }))).body.balance,
+    ).toEqual({ amount: '100.00', currency: 'BRL' });
     const bet2 = wager(w, 'BET', '15.00', { roundId: 'round-9' });
     await api.submit(bet2);
     const refund = wager(w, 'REFUND', '15.00', { roundId: 'round-9', referenceExternalTransactionId: bet2.externalTransactionId });
     await api.submit(refund);
-    const rb = await api.submit(wager(w, 'ROLLBACK', '15.00', { roundId: 'round-9', referenceExternalTransactionId: refund.externalTransactionId }));
+    const rb = await api.submit(
+      wager(w, 'ROLLBACK', '15.00', { roundId: 'round-9', referenceExternalTransactionId: refund.externalTransactionId }),
+    );
     expect(rb.body).toMatchObject({ status: 'PROCESSED', balance: { amount: '85.00' } });
     await assertWalletConsistent(db, w.walletId);
   });
@@ -236,7 +269,13 @@ describe('POST /wagering/transactions', () => {
     const res = await api.submit(wager(w, 'REFUND', '10.00', { referenceExternalTransactionId: 'bet-from-the-future' }));
     expect(res.status).toBe(202);
     expect(res.body.status).toBe('PENDING_REFERENCE');
-    const replay = await api.submit(wager(w, 'REFUND', '10.00', { externalTransactionId: (await api.request('GET', `/wagering/transactions/${res.body.transactionId}`)).body.externalTransactionId, referenceExternalTransactionId: 'bet-from-the-future' }));
+    const replay = await api.submit(
+      wager(w, 'REFUND', '10.00', {
+        externalTransactionId: (await api.request('GET', `/wagering/transactions/${res.body.transactionId}`)).body
+          .externalTransactionId as string,
+        referenceExternalTransactionId: 'bet-from-the-future',
+      }),
+    );
     expect(replay.status).toBe(202);
     expect(replay.body.idempotentReplay).toBe(true);
   });
@@ -248,7 +287,12 @@ describe('queries', () => {
     const bet = wager(w, 'BET', '1.00');
     const res = await api.submit(bet);
     const byId = await api.request('GET', `/wagering/transactions/${res.body.transactionId}`);
-    expect(byId.body).toMatchObject({ kind: 'BET', status: 'PROCESSED', money: { amount: '1.00', currency: 'BRL' }, balance: { amount: '9.00', currency: 'BRL' } });
+    expect(byId.body).toMatchObject({
+      kind: 'BET',
+      status: 'PROCESSED',
+      money: { amount: '1.00', currency: 'BRL' },
+      balance: { amount: '9.00', currency: 'BRL' },
+    });
     const byExt = await api.request('GET', `/providers/${bet.providerId}/wagering/transactions/${bet.externalTransactionId}`);
     expect(byExt.body.transactionId).toBe(res.body.transactionId);
     expect((await api.request('GET', '/wagering/transactions/0192f291-27dd-7d3f-8071-5f8685deef37')).status).toBe(404);
@@ -308,9 +352,14 @@ describe('reconciliation', () => {
       c.release();
     }
     const res = await api.request('POST', `/wallets/${w.walletId}/reconciliation`);
-    expect(res.body).toMatchObject({ consistent: false, difference: { amount: '5.00', currency: 'BRL' }, storedBalance: { amount: '105.00' }, calculatedBalance: { amount: '100.00' } });
+    expect(res.body).toMatchObject({
+      consistent: false,
+      difference: { amount: '5.00', currency: 'BRL' },
+      storedBalance: { amount: '105.00' },
+      calculatedBalance: { amount: '100.00' },
+    });
     const again = await api.request('GET', `/wallets/${w.walletId}`);
-    expect(again.body.balance.amount).toBe('105.00');
+    expect((again.body.balance as JsonObject).amount).toBe('105.00');
     const metrics = await api.request('GET', '/metrics');
     expect(String(metrics.body)).toMatch(/reconciliation_divergences_total\{[^}]*\} [1-9]/);
   });
@@ -329,7 +378,15 @@ describe('ops endpoints', () => {
     const res = await api.request('GET', '/health/live', undefined, { 'X-Correlation-Id': 'corr-abc-123' });
     expect(res.headers.get('x-correlation-id')).toBe('corr-abc-123');
     const metrics = await api.request('GET', '/metrics');
-    for (const name of ['wager_transactions_total', 'idempotent_duplicates_total', 'retries_total', 'dlq_messages_total', 'lock_conflicts_total', 'outbox_lag_seconds', 'processing_duration_seconds']) {
+    for (const name of [
+      'wager_transactions_total',
+      'idempotent_duplicates_total',
+      'retries_total',
+      'dlq_messages_total',
+      'lock_conflicts_total',
+      'outbox_lag_seconds',
+      'processing_duration_seconds',
+    ]) {
       expect(String(metrics.body)).toContain(name);
     }
   });

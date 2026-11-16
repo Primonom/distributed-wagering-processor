@@ -1,5 +1,7 @@
 #!/bin/sh
-# LocalStack "ready" hook: creates the queues used by the service (idempotent).
+# @file init-sqs.sh
+# @author Pablo Reis Rebonato
+# @description LocalStack ready hook that idempotently creates the wager FIFO queue, its DLQ and the events queue.
 # The application also creates them on startup when SQS_BOOTSTRAP=true.
 set -e
 REGION="${AWS_DEFAULT_REGION:-us-east-1}"

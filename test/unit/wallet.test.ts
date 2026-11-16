@@ -1,3 +1,9 @@
+/**
+ * @file wallet.test.ts
+ * @author Pablo Reis Rebonato
+ * @description Unit tests for Wallet invariants and immutable ledger entries.
+ */
+
 import { describe, expect, test } from 'bun:test';
 import {
   CurrencyMismatchError,
@@ -15,7 +21,13 @@ let seq = 0;
 const ids = () => ({ entryId: `e-${++seq}`, transactionId: `t-${seq}`, at });
 
 function openWallet(amount = '100.00') {
-  return Wallet.open({ id: 'w-1', playerId: 'p-1', initialBalance: brl(amount), at, opening: { transactionId: 'open-tx', entryId: 'open-entry' } });
+  return Wallet.open({
+    id: 'w-1',
+    playerId: 'p-1',
+    initialBalance: brl(amount),
+    at,
+    opening: { transactionId: 'open-tx', entryId: 'open-entry' },
+  });
 }
 
 describe('Wallet', () => {
@@ -79,7 +91,15 @@ describe('Wallet', () => {
   });
 
   test('rehydrate restores state without validation', () => {
-    const wallet = Wallet.rehydrate({ id: 'w', playerId: 'p', currency: 'BRL', balance: brl('3.00'), version: 7, createdAt: at, updatedAt: at });
+    const wallet = Wallet.rehydrate({
+      id: 'w',
+      playerId: 'p',
+      currency: 'BRL',
+      balance: brl('3.00'),
+      version: 7,
+      createdAt: at,
+      updatedAt: at,
+    });
     expect(wallet.version).toBe(7);
     expect(wallet.balance.amount).toBe('3.00');
   });
@@ -87,23 +107,55 @@ describe('Wallet', () => {
 
 describe('WalletLedgerEntry', () => {
   const base = {
-    id: 'e', walletId: 'w', transactionId: 't', money: brl('10.00'), walletVersion: 2, createdAt: at,
+    id: 'e',
+    walletId: 'w',
+    transactionId: 't',
+    money: brl('10.00'),
+    walletVersion: 2,
+    createdAt: at,
   };
 
   test('validates arithmetic in the factory', () => {
-    expect(() => WalletLedgerEntry.create({ ...base, direction: LedgerDirection.Credit, balanceBefore: brl('1.00'), balanceAfter: brl('12.00') })).toThrow(InvariantViolationError);
-    expect(() => WalletLedgerEntry.create({ ...base, direction: LedgerDirection.Debit, balanceBefore: brl('5.00'), balanceAfter: Money.fromPersisted('-5.00', 'BRL') })).toThrow(InvariantViolationError);
-    const ok = WalletLedgerEntry.create({ ...base, direction: LedgerDirection.Debit, balanceBefore: brl('15.00'), balanceAfter: brl('5.00') });
+    expect(() =>
+      WalletLedgerEntry.create({ ...base, direction: LedgerDirection.Credit, balanceBefore: brl('1.00'), balanceAfter: brl('12.00') }),
+    ).toThrow(InvariantViolationError);
+    expect(() =>
+      WalletLedgerEntry.create({
+        ...base,
+        direction: LedgerDirection.Debit,
+        balanceBefore: brl('5.00'),
+        balanceAfter: Money.fromPersisted('-5.00', 'BRL'),
+      }),
+    ).toThrow(InvariantViolationError);
+    const ok = WalletLedgerEntry.create({
+      ...base,
+      direction: LedgerDirection.Debit,
+      balanceBefore: brl('15.00'),
+      balanceAfter: brl('5.00'),
+    });
     expect(ok.isBalanced()).toBe(true);
     expect(ok.signedAmount().amount).toBe('-10.00');
   });
 
   test('rejects non-positive amounts', () => {
-    expect(() => WalletLedgerEntry.create({ ...base, money: Money.zero('BRL'), direction: LedgerDirection.Credit, balanceBefore: brl('1'), balanceAfter: brl('1') })).toThrow(InvariantViolationError);
+    expect(() =>
+      WalletLedgerEntry.create({
+        ...base,
+        money: Money.zero('BRL'),
+        direction: LedgerDirection.Credit,
+        balanceBefore: brl('1'),
+        balanceAfter: brl('1'),
+      }),
+    ).toThrow(InvariantViolationError);
   });
 
   test('is structurally immutable', () => {
-    const entry = WalletLedgerEntry.create({ ...base, direction: LedgerDirection.Credit, balanceBefore: brl('0'), balanceAfter: brl('10') });
+    const entry = WalletLedgerEntry.create({
+      ...base,
+      direction: LedgerDirection.Credit,
+      balanceBefore: brl('0'),
+      balanceAfter: brl('10'),
+    });
     expect(Object.isFrozen(entry)).toBe(true);
     expect(() => {
       (entry as unknown as { balanceAfter: Money }).balanceAfter = brl('999');

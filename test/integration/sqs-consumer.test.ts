@@ -1,7 +1,13 @@
+/**
+ * @file sqs-consumer.test.ts
+ * @author Pablo Reis Rebonato
+ * @description Integration tests for the SQS consumer: inbox, DLQ, retries leading to FAILED, and graceful shutdown.
+ */
+
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import type pg from 'pg';
 import { ApiClient, wager } from '../helpers/api';
-import { type TestApp, eventually, startTestApp, testQueues } from '../helpers/app';
+import { eventually, startTestApp, type TestApp, testQueues } from '../helpers/app';
 import { assertWalletConsistent, newPool } from '../helpers/db';
 import { approximateCount, drain, queueUrl, sendWager, testSqs } from '../helpers/sqs';
 
@@ -19,7 +25,11 @@ afterAll(async () => {
 const txByExternal = async (externalId: string) =>
   (await db.query(`SELECT id, status, failure_code FROM wager_transactions WHERE external_transaction_id = $1`, [externalId])).rows;
 const debits = async (walletId: string) =>
-  (await db.query<{ n: number }>(`SELECT COUNT(*)::int AS n FROM wallet_ledger_entries WHERE wallet_id = $1 AND direction = 'DEBIT'`, [walletId])).rows[0]?.n;
+  (
+    await db.query<{ n: number }>(`SELECT COUNT(*)::int AS n FROM wallet_ledger_entries WHERE wallet_id = $1 AND direction = 'DEBIT'`, [
+      walletId,
+    ])
+  ).rows[0]?.n;
 
 describe('SQS consumer', () => {
   let t: TestApp;
@@ -44,7 +54,9 @@ describe('SQS consumer', () => {
       return r.length ? r : undefined;
     });
     expect(rows[0].status).toBe('PROCESSED');
-    const inbox = await db.query(`SELECT consumer_name, processed_at IS NOT NULL AS processed FROM inbox_messages WHERE message_id = $1`, [messageId]);
+    const inbox = await db.query(`SELECT consumer_name, processed_at IS NOT NULL AS processed FROM inbox_messages WHERE message_id = $1`, [
+      messageId,
+    ]);
     expect(inbox.rows).toEqual([{ consumer_name: t.config.CONSUMER_NAME, processed: true }]);
     await eventually(async () => {
       const c = await approximateCount(sqs, wagerUrl);
@@ -104,14 +116,24 @@ describe('SQS consumer', () => {
     await drain(sqs, dlqUrl, { timeoutMs: 2000 });
     const w = await api.createWallet('100.00');
     const valid = wager(w, 'BET', '1.00');
-    await api.submit(valid, 'shared-key-' + valid.externalTransactionId);
+    await api.submit(valid, `shared-key-${valid.externalTransactionId}`);
 
     await sendWager(sqs, wagerUrl, valid, { body: '{not json' });
     await sendWager(sqs, wagerUrl, valid, {
-      body: JSON.stringify({ messageId: 'm-num', type: 'WagerTransactionRequested', occurredAt: new Date().toISOString(), data: { ...valid, money: { amount: 1, currency: 'BRL' }, idempotencyKey: 'x' } }),
+      body: JSON.stringify({
+        messageId: 'm-num',
+        type: 'WagerTransactionRequested',
+        occurredAt: new Date().toISOString(),
+        data: { ...valid, money: { amount: 1, currency: 'BRL' }, idempotencyKey: 'x' },
+      }),
     });
     await sendWager(sqs, wagerUrl, wager(w, 'OPENING', '1.00'));
-    await sendWager(sqs, wagerUrl, { ...valid, money: { amount: '2.00', currency: 'BRL' }, externalTransactionId: 'other-ext' }, { idempotencyKey: 'shared-key-' + valid.externalTransactionId });
+    await sendWager(
+      sqs,
+      wagerUrl,
+      { ...valid, money: { amount: '2.00', currency: 'BRL' }, externalTransactionId: 'other-ext' },
+      { idempotencyKey: `shared-key-${valid.externalTransactionId}` },
+    );
 
     const dead = await drain(sqs, dlqUrl, { until: (all) => all.length >= 4, timeoutMs: 20_000 });
     const reasons = dead.map((m) => m.MessageAttributes?.failureReason?.StringValue).sort();
@@ -199,7 +221,9 @@ describe('graceful shutdown', () => {
       expect(afterFirst).toBeLessThanOrEqual(30);
       const b = await assertWalletConsistent(db, w.walletId);
       expect(b.stored).toBe('970.00');
-      const { rows } = await db.query(`SELECT COUNT(*)::int AS n FROM wager_transactions WHERE wallet_id = $1 AND kind = 'BET'`, [w.walletId]);
+      const { rows } = await db.query(`SELECT COUNT(*)::int AS n FROM wager_transactions WHERE wallet_id = $1 AND kind = 'BET'`, [
+        w.walletId,
+      ]);
       expect(rows[0].n).toBe(30);
     } finally {
       await second.close();

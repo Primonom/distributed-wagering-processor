@@ -1,3 +1,9 @@
+/**
+ * @file provider-auth.guard.ts
+ * @author Pablo Reis Rebonato
+ * @description Authentication guard extension point backed by the ProviderIdentityPort.
+ */
+
 import { CanActivate, ExecutionContext, Inject, Injectable } from '@nestjs/common';
 import type { Request } from 'express';
 import { PORTS, type ProviderIdentity, type ProviderIdentityPort } from '../../../application/ports';

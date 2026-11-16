@@ -1,13 +1,19 @@
+/**
+ * @file sqs.ts
+ * @author Pablo Reis Rebonato
+ * @description LocalStack SQS helpers for sending, draining and counting test messages.
+ */
+
+import { randomUUID } from 'node:crypto';
 import {
   DeleteMessageBatchCommand,
   GetQueueAttributesCommand,
   GetQueueUrlCommand,
   type Message,
   ReceiveMessageCommand,
-  SQSClient,
   SendMessageCommand,
+  SQSClient,
 } from '@aws-sdk/client-sqs';
-import { randomUUID } from 'node:crypto';
 import { loadConfig } from '../../src/infrastructure/config/app-config';
 import { createSqsClient } from '../../src/infrastructure/messaging/sqs';
 import type { WagerPayload } from './api';
@@ -23,15 +29,29 @@ export async function queueUrl(sqs: SQSClient, name: string): Promise<string> {
 }
 
 /** Receives (and deletes) every message currently available, until `until` is satisfied or timeout. */
-export async function drain(sqs: SQSClient, url: string, opts: { until?: (all: Message[]) => boolean; timeoutMs?: number } = {}): Promise<Message[]> {
+export async function drain(
+  sqs: SQSClient,
+  url: string,
+  opts: { until?: (all: Message[]) => boolean; timeoutMs?: number } = {},
+): Promise<Message[]> {
   const all: Message[] = [];
   const deadline = Date.now() + (opts.timeoutMs ?? 10_000);
   while (Date.now() < deadline) {
-    const res = await sqs.send(new ReceiveMessageCommand({ QueueUrl: url, MaxNumberOfMessages: 10, WaitTimeSeconds: 1, MessageAttributeNames: ['All'], MessageSystemAttributeNames: ['All'] }));
+    const res = await sqs.send(
+      new ReceiveMessageCommand({
+        QueueUrl: url,
+        MaxNumberOfMessages: 10,
+        WaitTimeSeconds: 1,
+        MessageAttributeNames: ['All'],
+        MessageSystemAttributeNames: ['All'],
+      }),
+    );
     const msgs = res.Messages ?? [];
     if (msgs.length > 0) {
       all.push(...msgs);
-      await sqs.send(new DeleteMessageBatchCommand({ QueueUrl: url, Entries: msgs.map((m, i) => ({ Id: String(i), ReceiptHandle: m.ReceiptHandle })) }));
+      await sqs.send(
+        new DeleteMessageBatchCommand({ QueueUrl: url, Entries: msgs.map((m, i) => ({ Id: String(i), ReceiptHandle: m.ReceiptHandle })) }),
+      );
     }
     if (opts.until ? opts.until(all) : msgs.length === 0) break;
   }
@@ -39,7 +59,12 @@ export async function drain(sqs: SQSClient, url: string, opts: { until?: (all: M
 }
 
 export async function approximateCount(sqs: SQSClient, url: string): Promise<{ visible: number; inFlight: number }> {
-  const res = await sqs.send(new GetQueueAttributesCommand({ QueueUrl: url, AttributeNames: ['ApproximateNumberOfMessages', 'ApproximateNumberOfMessagesNotVisible'] }));
+  const res = await sqs.send(
+    new GetQueueAttributesCommand({
+      QueueUrl: url,
+      AttributeNames: ['ApproximateNumberOfMessages', 'ApproximateNumberOfMessagesNotVisible'],
+    }),
+  );
   return {
     visible: Number.parseInt(res.Attributes?.ApproximateNumberOfMessages ?? '0', 10),
     inFlight: Number.parseInt(res.Attributes?.ApproximateNumberOfMessagesNotVisible ?? '0', 10),

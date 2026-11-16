@@ -1,6 +1,12 @@
+/**
+ * @file mikro-orm.ts
+ * @author Pablo Reis Rebonato
+ * @description MikroORM configuration, explicit migration registry and ORM factory.
+ */
+
 import { MikroORM } from '@mikro-orm/core';
 import { Migrator } from '@mikro-orm/migrations';
-import { PostgreSqlDriver, defineConfig } from '@mikro-orm/postgresql';
+import { defineConfig, PostgreSqlDriver } from '@mikro-orm/postgresql';
 import type { AppConfig } from '../config/app-config';
 import { ALL_SCHEMAS } from './entities/schemas';
 import { Migration20261116000001_wallets_and_transactions } from './migrations/Migration20261116000001_wallets_and_transactions';
@@ -33,8 +39,13 @@ export function ormOptions(config: OrmConfig) {
       min: config.DB_POOL_MIN,
       max: config.DB_POOL_MAX,
       acquireTimeoutMillis: 10_000,
-      afterCreate: (conn: { query: (sql: string, cb: (err: Error | null) => void) => void }, done: (err: Error | null, conn: unknown) => void) => {
-        conn.query(`SET statement_timeout = ${statementTimeout}; SET idle_in_transaction_session_timeout = 60000`, (err) => done(err, conn));
+      afterCreate: (
+        conn: { query: (sql: string, cb: (err: Error | null) => void) => void },
+        done: (err: Error | null, conn: unknown) => void,
+      ) => {
+        conn.query(`SET statement_timeout = ${statementTimeout}; SET idle_in_transaction_session_timeout = 60000`, (err) =>
+          done(err, conn),
+        );
       },
     },
     extensions: [Migrator],

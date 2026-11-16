@@ -1,5 +1,11 @@
 /**
- * Migration CLI (cross-platform, runs with Bun):
+ * @file migrate.ts
+ * @author Pablo Reis Rebonato
+ * @description Cross-platform CLI that applies, reverts and lists the MikroORM migrations.
+ */
+
+/**
+ * Usage:
  *   bun scripts/migrate.ts up            apply all pending migrations
  *   bun scripts/migrate.ts down          revert the last migration
  *   bun scripts/migrate.ts down --all    revert everything

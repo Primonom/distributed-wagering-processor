@@ -1,10 +1,11 @@
+/**
+ * @file wallet.ts
+ * @author Pablo Reis Rebonato
+ * @description Wallet aggregate root whose balance only changes through movements that emit ledger entries.
+ */
+
 import { LedgerDirection, WalletLedgerEntry } from '../ledger/wallet-ledger-entry';
-import {
-  CurrencyMismatchError,
-  InsufficientBalanceError,
-  InvariantViolationError,
-  assertNonEmpty,
-} from '../shared/errors';
+import { assertNonEmpty, CurrencyMismatchError, InsufficientBalanceError, InvariantViolationError } from '../shared/errors';
 import { Money } from '../shared/money';
 
 export interface WalletState {
@@ -48,6 +49,10 @@ export class Wallet {
     private _updatedAt: Date,
   ) {}
 
+  /**
+   * Opens a wallet at version 1. A positive initial balance also yields the OPENING ledger entry.
+   * @throws InvariantViolationError for a negative balance or a positive one without OPENING ids.
+   */
   static open(props: OpenWalletProps): { wallet: Wallet; openingEntry: WalletLedgerEntry | undefined } {
     assertNonEmpty(props.id, 'id');
     assertNonEmpty(props.playerId, 'playerId');
@@ -80,15 +85,7 @@ export class Wallet {
 
   /** Reconstruction from persistence — does not re-validate transitions. */
   static rehydrate(state: WalletState): Wallet {
-    return new Wallet(
-      state.id,
-      state.playerId,
-      state.currency,
-      state.balance,
-      state.version,
-      state.createdAt,
-      state.updatedAt,
-    );
+    return new Wallet(state.id, state.playerId, state.currency, state.balance, state.version, state.createdAt, state.updatedAt);
   }
 
   get balance(): Money {
@@ -103,11 +100,16 @@ export class Wallet {
     return this._updatedAt;
   }
 
+  /** @throws CurrencyMismatchError when the currency differs from the wallet currency. */
   canDebit(money: Money): boolean {
     this.assertSameCurrency(money);
     return this._balance.isGreaterThanOrEqual(money);
   }
 
+  /**
+   * Decreases the balance, bumps the version and returns the matching ledger entry.
+   * @throws InsufficientBalanceError when the balance is lower than `money`.
+   */
   debit(money: Money, props: MovementProps): WalletLedgerEntry {
     this.assertSameCurrency(money);
     if (!this.canDebit(money)) {
@@ -116,11 +118,13 @@ export class Wallet {
     return this.apply(LedgerDirection.Debit, money, props);
   }
 
+  /** Increases the balance, bumps the version and returns the matching ledger entry. */
   credit(money: Money, props: MovementProps): WalletLedgerEntry {
     this.assertSameCurrency(money);
     return this.apply(LedgerDirection.Credit, money, props);
   }
 
+  /** Dispatches to `debit` or `credit`; used when the direction comes from a reference (ROLLBACK). */
   move(direction: LedgerDirection, money: Money, props: MovementProps): WalletLedgerEntry {
     return direction === LedgerDirection.Debit ? this.debit(money, props) : this.credit(money, props);
   }

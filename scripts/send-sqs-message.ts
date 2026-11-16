@@ -1,5 +1,11 @@
 /**
- * Sends a WagerTransactionRequested message to the wager queue.
+ * @file send-sqs-message.ts
+ * @author Pablo Reis Rebonato
+ * @description Publishes a WagerTransactionRequested message to the wager queue, as a game provider would.
+ */
+
+/**
+ * Usage:
  *   bun scripts/send-sqs-message.ts <walletId> <playerId> <KIND> <amount> [referenceExternalTransactionId]
  */
 import { randomUUID } from 'node:crypto';
@@ -34,6 +40,8 @@ const body = {
     ...(reference ? { referenceExternalTransactionId: reference } : {}),
   },
 };
-await sqs.send(new SendMessageCommand({ QueueUrl, MessageBody: JSON.stringify(body), MessageGroupId: walletId, MessageDeduplicationId: messageId }));
+await sqs.send(
+  new SendMessageCommand({ QueueUrl, MessageBody: JSON.stringify(body), MessageGroupId: walletId, MessageDeduplicationId: messageId }),
+);
 console.log(JSON.stringify({ messageId, externalTransactionId }));
 sqs.destroy();

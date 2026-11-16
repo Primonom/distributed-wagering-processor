@@ -39,6 +39,8 @@ O Postgres cria também o banco `wallet_test`, usado pelas suítes automatizadas
 | `bun run cluster:up` | build da imagem + migrations + **3 instâncias** (`docker compose --scale app=3`) em `localhost:3001-3003` |
 | `bun run cluster:down` | derruba o cluster |
 | `bun run typecheck` | `tsc --noEmit` (strict + `noUncheckedIndexedAccess`) |
+| `bun run lint` | Biome: lint + formatação + organização de imports (falha com qualquer aviso) |
+| `bun run lint:fix` / `bun run format` | aplica as correções seguras do Biome / só a formatação |
 | `bun run test:unit` | domínio, sem infraestrutura |
 | `bun run test:integration` | Postgres + LocalStack reais (precisa de `infra:up`) |
 | `bun run test:concurrency` | 3+ processos reais da app, crashes, restart (precisa de `infra:up`) |
@@ -199,3 +201,7 @@ src/interfaces       HTTP (controllers, filtro de erros, guard) e consumer SQS
 scripts/             migrate, load-test, utilitários SQS
 test/unit | integration | concurrency
 ```
+
+## Autor
+
+Pablo Reis Rebonato

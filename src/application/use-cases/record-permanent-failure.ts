@@ -1,11 +1,17 @@
+/**
+ * @file record-permanent-failure.ts
+ * @author Pablo Reis Rebonato
+ * @description Best-effort audit of an operation abandoned after retries were exhausted, written as a terminal FAILED transaction.
+ */
+
 import {
+  computeWagerPayloadHash,
   FailureCode,
   InvalidMoneyError,
   InvalidWagerTransactionError,
   Money,
   WagerTransaction,
   WagerTransactionKind,
-  computeWagerPayloadHash,
 } from '../../domain';
 import type { Clock, IdGenerator, LoggerPort, UnitOfWork } from '../ports';
 import type { SubmitWagerCommand } from './submit-wager-transaction';
@@ -24,6 +30,7 @@ export class RecordPermanentFailure {
     private readonly logger: LoggerPort,
   ) {}
 
+  /** Returns the FAILED transaction id, or undefined when nothing was written. */
   async execute(cmd: SubmitWagerCommand): Promise<string | undefined> {
     let money: Money;
     try {
@@ -63,7 +70,13 @@ export class RecordPermanentFailure {
       tx.fail(FailureCode.InfrastructurePermanentFailure, now);
       await repos.transactions.insert(tx);
       this.logger.error(
-        { correlationId: cmd.correlationId, transactionId: tx.id, walletId: tx.walletId, providerId: tx.providerId, failureCode: tx.failureCode },
+        {
+          correlationId: cmd.correlationId,
+          transactionId: tx.id,
+          walletId: tx.walletId,
+          providerId: tx.providerId,
+          failureCode: tx.failureCode,
+        },
         'transaction recorded as FAILED after exhausting retries',
       );
       return tx.id;

@@ -1,5 +1,11 @@
-import { FAILURE_CODE_ACTION, WagerTransaction, WagerTransactionStatus, Wallet, WalletLedgerEntry } from '../../domain';
+/**
+ * @file presenters.ts
+ * @author Pablo Reis Rebonato
+ * @description Response presenters and the mapping from submission outcome to HTTP status.
+ */
+
 import type { SubmitWagerResult } from '../../application/use-cases/submit-wager-transaction';
+import { FAILURE_CODE_ACTION, WagerTransaction, WagerTransactionStatus, Wallet, WalletLedgerEntry } from '../../domain';
 
 export function presentWallet(w: Wallet) {
   return {

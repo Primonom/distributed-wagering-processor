@@ -1,4 +1,11 @@
+/**
+ * @file create-wallet.ts
+ * @author Pablo Reis Rebonato
+ * @description Use case that opens a wallet and, for a positive initial balance, records its OPENING transaction and ledger line atomically.
+ */
+
 import {
+  computeWagerPayloadHash,
   INTERNAL_PROVIDER_ID,
   InvalidMoneyError,
   InvariantViolationError,
@@ -8,9 +15,8 @@ import {
   WagerTransaction,
   WagerTransactionKind,
   WagerTransactionProcessed,
-  WalletBalanceChanged,
   Wallet,
-  computeWagerPayloadHash,
+  WalletBalanceChanged,
 } from '../../domain';
 import { InvalidRequestError, UniqueConstraintError, WalletAlreadyExistsError } from '../errors/application-errors';
 import type { Clock, IdGenerator, LoggerPort, UnitOfWork } from '../ports';
@@ -33,6 +39,10 @@ export class CreateWallet {
     private readonly logger: LoggerPort,
   ) {}
 
+  /**
+   * @throws InvalidRequestError for an invalid player id or initial balance.
+   * @throws WalletAlreadyExistsError when the player already has a wallet in that currency.
+   */
   async execute(cmd: CreateWalletCommand): Promise<Wallet> {
     let initialBalance: Money;
     try {

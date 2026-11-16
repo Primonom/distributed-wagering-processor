@@ -1,3 +1,9 @@
+/**
+ * @file schemas.ts
+ * @author Pablo Reis Rebonato
+ * @description MikroORM entity schemas and persistence records, kept separate from domain classes.
+ */
+
 import { EntitySchema } from '@mikro-orm/core';
 
 /**

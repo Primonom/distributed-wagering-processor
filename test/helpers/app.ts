@@ -1,8 +1,14 @@
-import type { INestApplication } from '@nestjs/common';
+/**
+ * @file app.ts
+ * @author Pablo Reis Rebonato
+ * @description In-process test application bootstrap, fast test configuration and polling helpers.
+ */
+
 import { randomUUID } from 'node:crypto';
+import type { INestApplication } from '@nestjs/common';
 import { createApp } from '../../src/bootstrap';
 import { type AppConfig, loadConfig } from '../../src/infrastructure/config/app-config';
-import { TEST_DATABASE_URL, ensureMigrated } from './db';
+import { ensureMigrated, TEST_DATABASE_URL } from './db';
 
 export interface TestApp {
   app: INestApplication;
@@ -66,8 +72,18 @@ export async function startTestApp(overrides: Partial<AppConfig> = {}): Promise<
   };
 }
 
+/** Indexed access that fails the test loudly instead of yielding `undefined`. */
+export function at<T>(items: readonly T[], index: number): T {
+  const item = items[index];
+  if (item === undefined) throw new Error(`no element at index ${index} (length ${items.length})`);
+  return item;
+}
+
 /** Polls `fn` until it returns a truthy value (no fixed sleeps as synchronisation). */
-export async function eventually<T>(fn: () => Promise<T | undefined | null | false>, opts: { timeoutMs?: number; intervalMs?: number; message?: string } = {}): Promise<T> {
+export async function eventually<T>(
+  fn: () => Promise<T | undefined | null | false>,
+  opts: { timeoutMs?: number; intervalMs?: number; message?: string } = {},
+): Promise<T> {
   const deadline = Date.now() + (opts.timeoutMs ?? 15_000);
   let lastError: unknown;
   while (Date.now() < deadline) {

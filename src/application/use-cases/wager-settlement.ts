@@ -1,3 +1,9 @@
+/**
+ * @file wager-settlement.ts
+ * @author Pablo Reis Rebonato
+ * @description Single settlement path that resolves the reference, applies the domain decision and persists transaction, ledger and outbox events.
+ */
+
 import {
   BackoffPolicy,
   EventContext,
@@ -12,8 +18,8 @@ import {
   WagerTransactionProcessed,
   WagerTransactionRejected,
   WagerTransactionStatus,
-  WalletBalanceChanged,
   Wallet,
+  WalletBalanceChanged,
 } from '../../domain';
 import type { IdGenerator, TransactionalRepositories } from '../ports';
 
@@ -32,12 +38,14 @@ export class WagerSettlement {
     private readonly pendingPolicy: PendingReferencePolicy,
   ) {}
 
+  /** Loads the referenced operation (and whether it was already reversed) for the domain decision. */
   async resolveReference(repos: TransactionalRepositories, tx: WagerTransaction): Promise<ReferenceContext> {
     if (tx.referenceExternalTransactionId === undefined) {
       return { reference: undefined, alreadyReversed: false };
     }
     const reference = await repos.transactions.findByProviderAndExternalId(tx.providerId, tx.referenceExternalTransactionId);
-    const alreadyReversed = reference !== undefined && tx.isReversal() ? await repos.transactions.hasProcessedReversal(reference.id) : false;
+    const alreadyReversed =
+      reference !== undefined && tx.isReversal() ? await repos.transactions.hasProcessedReversal(reference.id) : false;
     return { reference, alreadyReversed };
   }
 

@@ -1,8 +1,10 @@
-import {
-  ConcurrencyConflictError,
-  TransientInfrastructureError,
-  UniqueConstraintError,
-} from '../../application/errors/application-errors';
+/**
+ * @file db-errors.ts
+ * @author Pablo Reis Rebonato
+ * @description Translation of PostgreSQL and ORM errors into retryable or conflict application errors.
+ */
+
+import { ConcurrencyConflictError, TransientInfrastructureError, UniqueConstraintError } from '../../application/errors/application-errors';
 
 interface PgLikeError {
   code?: string;
@@ -18,7 +20,11 @@ const TRANSIENT_CODES = new Set([
   '57P03', // cannot_connect_now
   '53300', // too_many_connections
   '57014', // query_canceled (statement_timeout)
-  '08000', '08003', '08006', '08001', '08004',
+  '08000',
+  '08003',
+  '08006',
+  '08001',
+  '08004',
 ]);
 const TRANSIENT_NODE_CODES = new Set(['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EPIPE', 'ENOTFOUND', 'EAI_AGAIN']);
 
@@ -53,6 +59,8 @@ function isConnectionFailure(e: PgLikeError): boolean {
   const msg = e.message ?? '';
   return (
     e.name === 'ConnectionException' ||
-    /Timeout acquiring a connection|Connection terminated|connect ECONNREFUSED|Client has encountered a connection error|terminating connection/i.test(msg)
+    /Timeout acquiring a connection|Connection terminated|connect ECONNREFUSED|Client has encountered a connection error|terminating connection/i.test(
+      msg,
+    )
   );
 }

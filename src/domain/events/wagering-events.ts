@@ -1,3 +1,9 @@
+/**
+ * @file wagering-events.ts
+ * @author Pablo Reis Rebonato
+ * @description Concrete wallet integration events (balance changed, processed, rejected, pending reference) built from domain state.
+ */
+
 import { LedgerDirection, WalletLedgerEntry } from '../ledger/wallet-ledger-entry';
 import { FailureCode } from '../shared/failure-code';
 import { MoneyProps } from '../shared/money';
@@ -49,6 +55,7 @@ export interface WagerTransactionProcessedData extends TransactionSummary {
   processedAt: string;
 }
 
+/** Emitted when an operation is PROCESSED (including LOSS, which moves no money). */
 export class WagerTransactionProcessed extends IntegrationEvent<WagerTransactionProcessedData> {
   readonly eventType = 'WagerTransactionProcessed';
   readonly version = 1;
@@ -68,6 +75,7 @@ export interface WagerTransactionRejectedData extends TransactionSummary {
   balance: MoneyProps;
 }
 
+/** Emitted when an operation is REJECTED with a stable failure code. */
 export class WagerTransactionRejected extends IntegrationEvent<WagerTransactionRejectedData> {
   readonly eventType = 'WagerTransactionRejected';
   readonly version = 1;
@@ -88,6 +96,7 @@ export interface WagerTransactionPendingReferenceData extends TransactionSummary
   nextAttemptAt: string | null;
 }
 
+/** Emitted when an operation is parked waiting for the operation it references. */
 export class WagerTransactionPendingReference extends IntegrationEvent<WagerTransactionPendingReferenceData> {
   readonly eventType = 'WagerTransactionPendingReference';
   readonly version = 1;
@@ -112,6 +121,7 @@ export interface WalletBalanceChangedData {
   walletVersion: number;
 }
 
+/** Emitted once per ledger entry, carrying the balance before and after. */
 export class WalletBalanceChanged extends IntegrationEvent<WalletBalanceChangedData> {
   readonly eventType = 'WalletBalanceChanged';
   readonly version = 1;

@@ -1,3 +1,7 @@
+# @file docker-compose.yml
+# @author Pablo Reis Rebonato
+# @description Local stack: PostgreSQL 16, LocalStack SQS and the scalable application service with its migration job.
+
 name: wagering
 
 services:

@@ -1,3 +1,9 @@
+/**
+ * @file bootstrap.ts
+ * @author Pablo Reis Rebonato
+ * @description Builds the NestJS application with pino logging, hardened Express settings and optional shutdown hooks.
+ */
+
 import 'reflect-metadata';
 import type { INestApplication } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';

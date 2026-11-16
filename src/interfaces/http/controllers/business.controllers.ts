@@ -1,19 +1,33 @@
-import { Body, Controller, ForbiddenException, Get, Headers, HttpCode, Inject, Param, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
+/**
+ * @file business.controllers.ts
+ * @author Pablo Reis Rebonato
+ * @description HTTP controllers for wallets, ledger, reconciliation and wager transactions.
+ */
+
+import {
+  Body,
+  Controller,
+  ForbiddenException,
+  Get,
+  Headers,
+  HttpCode,
+  Inject,
+  Param,
+  Post,
+  Query,
+  Req,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
 import type { Response } from 'express';
 import { z } from 'zod';
 import { InvalidRequestError } from '../../../application/errors/application-errors';
 import { CreateWallet } from '../../../application/use-cases/create-wallet';
 import { ReconcileWallet, WalletQueries } from '../../../application/use-cases/queries';
 import { SubmitWagerTransaction } from '../../../application/use-cases/submit-wager-transaction';
-import { CreateWalletSchema, WagerPayloadSchema, formatZodError } from '../../contracts/wager-contracts';
+import { CreateWalletSchema, formatZodError, WagerPayloadSchema } from '../../contracts/wager-contracts';
 import { ProviderAuthGuard, type RequestWithIdentity } from '../guards/provider-auth.guard';
-import {
-  presentLedgerEntry,
-  presentSubmission,
-  presentTransaction,
-  presentWallet,
-  statusForSubmission,
-} from '../presenters';
+import { presentLedgerEntry, presentSubmission, presentTransaction, presentWallet, statusForSubmission } from '../presenters';
 
 function parse<T extends z.ZodTypeAny>(schema: T, value: unknown): z.infer<T> {
   const result = schema.safeParse(value);

@@ -1,3 +1,9 @@
+/**
+ * @file system.ts
+ * @author Pablo Reis Rebonato
+ * @description System adapters: wall clock, UUID v7 generator and the no-op provider identity.
+ */
+
 import { v7 as uuidv7 } from 'uuid';
 import type { Clock, IdGenerator, ProviderIdentity, ProviderIdentityPort } from '../application/ports';
 

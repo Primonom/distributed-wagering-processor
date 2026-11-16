@@ -1,3 +1,9 @@
+/**
+ * @file Migration20261116000003_inbox_outbox.ts
+ * @author Pablo Reis Rebonato
+ * @description Reversible migration creating the inbox and outbox tables and their polling indexes.
+ */
+
 import { Migration } from '@mikro-orm/migrations';
 
 export class Migration20261116000003_inbox_outbox extends Migration {

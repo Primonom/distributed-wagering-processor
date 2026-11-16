@@ -1,3 +1,9 @@
+/**
+ * @file logging.ts
+ * @author Pablo Reis Rebonato
+ * @description Pino root logger with financial-field redaction and the LoggerPort adapter.
+ */
+
 import pino, { type Logger } from 'pino';
 import type { LoggerPort } from '../../application/ports';
 
@@ -13,8 +19,19 @@ export function createRootLogger(level: string, instanceId: string): Logger {
     messageKey: 'msg',
     redact: {
       paths: [
-        'money', '*.money', 'amount', '*.amount', 'balance', '*.balance', 'initialBalance', '*.initialBalance',
-        'req.headers.authorization', 'req.body', 'res.body', 'payload', '*.payload',
+        'money',
+        '*.money',
+        'amount',
+        '*.amount',
+        'balance',
+        '*.balance',
+        'initialBalance',
+        '*.initialBalance',
+        'req.headers.authorization',
+        'req.body',
+        'res.body',
+        'payload',
+        '*.payload',
       ],
       censor: '[redacted]',
     },

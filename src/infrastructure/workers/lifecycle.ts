@@ -1,3 +1,9 @@
+/**
+ * @file lifecycle.ts
+ * @author Pablo Reis Rebonato
+ * @description Starts background workers and runs the ordered graceful-shutdown sequence.
+ */
+
 import type { SQSClient } from '@aws-sdk/client-sqs';
 import type { MikroORM } from '@mikro-orm/core';
 import type { LoggerPort } from '../../application/ports';

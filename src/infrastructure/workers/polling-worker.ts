@@ -1,3 +1,9 @@
+/**
+ * @file polling-worker.ts
+ * @author Pablo Reis Rebonato
+ * @description Polling loop for background tasks with idle backoff and graceful stop.
+ */
+
 import type { LoggerPort } from '../../application/ports';
 
 /**
@@ -13,7 +19,8 @@ export class PollingWorker {
   constructor(
     readonly name: string,
     private readonly intervalMs: number,
-    private readonly task: () => Promise<number | void>,
+    /** Resolves to the number of items handled; any other value counts as idle. */
+    private readonly task: () => Promise<unknown>,
     private readonly logger: LoggerPort,
   ) {}
 

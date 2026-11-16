@@ -1,9 +1,15 @@
-import type { Subprocess } from 'bun';
+/**
+ * @file cluster.ts
+ * @author Pablo Reis Rebonato
+ * @description Spawns and controls real application processes for multi-instance tests.
+ */
+
+import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { randomUUID } from 'node:crypto';
-import { TEST_DATABASE_URL, ensureMigrated } from './db';
+import type { Subprocess } from 'bun';
+import { ensureMigrated, TEST_DATABASE_URL } from './db';
 
 /**
  * Real multi-process cluster for concurrency tests: every instance is a separate
@@ -91,8 +97,12 @@ export async function waitReady(instance: Instance, timeoutMs = 90_000): Promise
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (instance.proc.exitCode !== null) {
-      const stderr = await Bun.file(`${instance.logFile}.err`).text().catch(() => '');
-      throw new Error(`${instance.name} exited early with ${instance.proc.exitCode}${stderr.includes('EADDRINUSE') ? ' (EADDRINUSE)' : ''}; see ${instance.logFile}.err`);
+      const stderr = await Bun.file(`${instance.logFile}.err`)
+        .text()
+        .catch(() => '');
+      throw new Error(
+        `${instance.name} exited early with ${instance.proc.exitCode}${stderr.includes('EADDRINUSE') ? ' (EADDRINUSE)' : ''}; see ${instance.logFile}.err`,
+      );
     }
     try {
       const res = await fetch(`${instance.baseUrl}/health/ready`);

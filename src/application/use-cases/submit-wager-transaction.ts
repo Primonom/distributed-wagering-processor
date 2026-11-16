@@ -1,4 +1,11 @@
+/**
+ * @file submit-wager-transaction.ts
+ * @author Pablo Reis Rebonato
+ * @description Idempotent entry point for provider operations (HTTP and SQS) that settles them under the wallet row lock in one SQL transaction.
+ */
+
 import {
+  computeWagerPayloadHash,
   FailureCode,
   InboxMessage,
   InvalidMoneyError,
@@ -9,7 +16,6 @@ import {
   WagerTransaction,
   WagerTransactionKind,
   WagerTransactionStatus,
-  computeWagerPayloadHash,
 } from '../../domain';
 import {
   ExternalTransactionConflictError,
@@ -20,9 +26,7 @@ import {
 import type { Clock, IdGenerator, LoggerPort, MetricsPort, TransactionalRepositories, UnitOfWork } from '../ports';
 import type { WagerSettlement } from './wager-settlement';
 
-export type SubmissionSource =
-  | { channel: 'http' }
-  | { channel: 'sqs'; consumerName: string; messageId: string };
+export type SubmissionSource = { channel: 'http' } | { channel: 'sqs'; consumerName: string; messageId: string };
 
 export interface SubmitWagerCommand {
   idempotencyKey: string;
@@ -73,6 +77,13 @@ export class SubmitWagerTransaction {
     private readonly logger: LoggerPort,
   ) {}
 
+  /**
+   * Settles the operation or replays the stored outcome for a known idempotency key.
+   * @throws InvalidRequestError for malformed payloads or a missing idempotency key.
+   * @throws IdempotencyKeyConflictError when the key was used with a different payload.
+   * @throws ExternalTransactionConflictError when the external id was used with another idempotency key.
+   * @throws TransientInfrastructureError when the database stays unavailable or contended after retries.
+   */
   async execute(cmd: SubmitWagerCommand): Promise<SubmitWagerResult> {
     const started = performance.now();
     const { money, kind } = this.validate(cmd);
@@ -149,7 +160,14 @@ export class SubmitWagerTransaction {
         const existing = await repos.transactions.findByIdempotencyKey(cmd.idempotencyKey);
         return existing
           ? { ...this.toResult(existing, true), duplicateMessage: true }
-          : { transactionId: null, status: WagerTransactionStatus.Rejected, failureCode: FailureCode.WalletNotFound, balance: null, idempotentReplay: true, duplicateMessage: true };
+          : {
+              transactionId: null,
+              status: WagerTransactionStatus.Rejected,
+              failureCode: FailureCode.WalletNotFound,
+              balance: null,
+              idempotentReplay: true,
+              duplicateMessage: true,
+            };
       }
     }
 
@@ -161,7 +179,14 @@ export class SubmitWagerTransaction {
       // Nothing to attach a row to (FK): answer with a stable rejection, persist nothing but the inbox.
       this.metrics.transactionOutcome(WagerTransactionStatus.Rejected, kind);
       this.logger.info(this.logContext(cmd, { failureCode: FailureCode.WalletNotFound }), 'wager transaction rejected: wallet not found');
-      return { transactionId: null, status: WagerTransactionStatus.Rejected, failureCode: FailureCode.WalletNotFound, balance: null, idempotentReplay: false, duplicateMessage: false };
+      return {
+        transactionId: null,
+        status: WagerTransactionStatus.Rejected,
+        failureCode: FailureCode.WalletNotFound,
+        balance: null,
+        idempotentReplay: false,
+        duplicateMessage: false,
+      };
     }
 
     // Re-check under the wallet lock: a concurrent identical request has either committed (visible now) or not started.

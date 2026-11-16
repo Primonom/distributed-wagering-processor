@@ -1,4 +1,10 @@
 /**
+ * @file load-test.ts
+ * @author Pablo Reis Rebonato
+ * @description Closed-loop HTTP load generator that runs three scenarios against three instances and writes the results block of docs/LOAD_TEST.md.
+ */
+
+/**
  * Load test: `bun run test:load`
  *
  * Closed-loop HTTP clients (LOAD_CONCURRENCY workers, each waits for its response before
@@ -13,11 +19,11 @@
  * Output: docs/LOAD_TEST.md (results block between markers) and .load-test/<timestamp>.json
  */
 import { randomUUID } from 'node:crypto';
-import { mkdirSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { cpus, totalmem, platform, release } from 'node:os';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { cpus, platform, release, totalmem } from 'node:os';
 import { join } from 'node:path';
-import pg from 'pg';
 import type { Subprocess } from 'bun';
+import pg from 'pg';
 
 const ROOT = join(import.meta.dir, '..');
 const DURATION_S = Number.parseInt(process.env.LOAD_DURATION_S ?? '20', 10);
@@ -25,14 +31,21 @@ const CONCURRENCY = Number.parseInt(process.env.LOAD_CONCURRENCY ?? '64', 10);
 const WALLETS = Number.parseInt(process.env.LOAD_WALLETS ?? '200', 10);
 const DATABASE_URL = process.env.DATABASE_URL ?? 'postgres://wallet:wallet@localhost:5432/wallet';
 
-interface Sample { latencyMs: number; status: number; kind: string }
+interface Sample {
+  latencyMs: number;
+  status: number;
+  kind: string;
+}
 interface ScenarioResult {
   name: string;
   description: string;
   requests: number;
   durationS: number;
   throughput: number;
-  p50: number; p95: number; p99: number; max: number;
+  p50: number;
+  p95: number;
+  p99: number;
+  max: number;
   statusCounts: Record<string, number>;
   errorRate: number;
   lockConflicts: number;
@@ -40,8 +53,6 @@ interface ScenarioResult {
   maxOutboxLagS: number;
   outboxDrainS: number;
 }
-
-// ------------------------------------------------------------------ instances
 
 const spawned: Subprocess[] = [];
 
@@ -53,7 +64,15 @@ async function ensureTargets(): Promise<string[]> {
       Bun.spawn({
         cmd: [process.execPath, 'src/main.ts'],
         cwd: ROOT,
-        env: { ...process.env, PORT: String(port), INSTANCE_ID: `load-${port}`, LOG_LEVEL: 'warn', DATABASE_URL, METRICS_GAUGE_INTERVAL_MS: '1000', DB_POOL_MAX: '20' },
+        env: {
+          ...process.env,
+          PORT: String(port),
+          INSTANCE_ID: `load-${port}`,
+          LOG_LEVEL: 'warn',
+          DATABASE_URL,
+          METRICS_GAUGE_INTERVAL_MS: '1000',
+          DB_POOL_MAX: '20',
+        },
         stdout: 'ignore',
         stderr: 'inherit',
       }),
@@ -65,7 +84,9 @@ async function ensureTargets(): Promise<string[]> {
     for (;;) {
       try {
         if ((await fetch(`${url}/health/ready`)).ok) break;
-      } catch { /* starting */ }
+      } catch {
+        /* starting */
+      }
       if (Date.now() > deadline) throw new Error(`${url} not ready`);
       await Bun.sleep(300);
     }
@@ -78,12 +99,16 @@ async function shutdown() {
   await Promise.all(spawned.map((p) => p.exited));
 }
 
-// ------------------------------------------------------------------ helpers
-
 async function post(url: string, body: unknown, headers: Record<string, string> = {}) {
   const res = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body) });
-  const json = (await res.json().catch(() => ({}))) as Record<string, any>;
+  const json = (await res.json().catch(() => ({}))) as { id?: string };
   return { status: res.status, json };
+}
+
+async function createWallet(target: string, playerId: string): Promise<string> {
+  const res = await post(`${target}/wallets`, { playerId, initialBalance: { amount: '1000000.00', currency: 'BRL' } });
+  if (res.status !== 201 || !res.json.id) throw new Error(`wallet creation failed with HTTP ${res.status}`);
+  return res.json.id;
 }
 
 async function metricSum(targets: string[], name: string): Promise<number> {
@@ -91,7 +116,8 @@ async function metricSum(targets: string[], name: string): Promise<number> {
   for (const t of targets) {
     const text = await (await fetch(`${t}/metrics`)).text();
     for (const line of text.split('\n')) {
-      if (line.startsWith(`${name}{`) || line.startsWith(`${name} `)) total += Number.parseFloat(line.slice(line.lastIndexOf(' ') + 1)) || 0;
+      if (line.startsWith(`${name}{`) || line.startsWith(`${name} `))
+        total += Number.parseFloat(line.slice(line.lastIndexOf(' ') + 1)) || 0;
     }
   }
   return total;
@@ -113,7 +139,9 @@ async function runScenario(name: string, description: string, targets: string[],
   let rr = 0;
   const lagSampler = (async () => {
     while (Date.now() < stopAt) {
-      const { rows } = await db.query<{ age: string | null }>(`SELECT EXTRACT(EPOCH FROM (now() - MIN(occurred_at)))::text AS age FROM outbox_messages WHERE published_at IS NULL`);
+      const { rows } = await db.query<{ age: string | null }>(
+        `SELECT EXTRACT(EPOCH FROM (now() - MIN(occurred_at)))::text AS age FROM outbox_messages WHERE published_at IS NULL`,
+      );
       maxLag = Math.max(maxLag, Number.parseFloat(rows[0]?.age ?? '0') || 0);
       await Bun.sleep(500);
     }
@@ -150,7 +178,8 @@ async function runScenario(name: string, description: string, targets: string[],
   for (const s of samples) statusCounts[s.status] = (statusCounts[s.status] ?? 0) + 1;
   const errors = samples.filter((s) => s.status === 0 || s.status >= 500).length;
   return {
-    name, description,
+    name,
+    description,
     requests: samples.length,
     durationS: Number(elapsedS.toFixed(1)),
     throughput: Number((samples.length / elapsedS).toFixed(1)),
@@ -167,8 +196,6 @@ async function runScenario(name: string, description: string, targets: string[],
   };
 }
 
-// ------------------------------------------------------------------ main
-
 const targets = await ensureTargets();
 const db = new pg.Pool({ connectionString: DATABASE_URL, max: 4 });
 try {
@@ -177,11 +204,10 @@ try {
   const wallets: Array<{ walletId: string; playerId: string }> = [];
   for (let i = 0; i < WALLETS; i++) {
     const playerId = `load-${runId}-${i}`;
-    const res = await post(`${targets[i % targets.length]}/wallets`, { playerId, initialBalance: { amount: '1000000.00', currency: 'BRL' } });
-    wallets.push({ walletId: res.json.id, playerId });
+    wallets.push({ walletId: await createWallet(`${targets[i % targets.length]}`, playerId), playerId });
   }
   const hotPlayer = `load-${runId}-hot`;
-  const hot = { walletId: (await post(`${targets[0]}/wallets`, { playerId: hotPlayer, initialBalance: { amount: '1000000.00', currency: 'BRL' } })).json.id as string, playerId: hotPlayer };
+  const hot = { walletId: await createWallet(`${targets[0]}`, hotPlayer), playerId: hotPlayer };
 
   const makeOp = (w: { walletId: string; playerId: string }): Op => {
     const kind = Math.random() < 0.8 ? 'BET' : 'WIN';
@@ -189,22 +215,42 @@ try {
     return {
       kind,
       key: `load:${ext}`,
-      payload: { providerId: 'load', externalTransactionId: ext, playerId: w.playerId, walletId: w.walletId, roundId: `r-${ext.slice(-6)}`, gameId: 'load-game', kind, money: { amount: '1.00', currency: 'BRL' } },
+      payload: {
+        providerId: 'load',
+        externalTransactionId: ext,
+        playerId: w.playerId,
+        walletId: w.walletId,
+        roundId: `r-${ext.slice(-6)}`,
+        gameId: 'load-game',
+        kind,
+        money: { amount: '1.00', currency: 'BRL' },
+      },
     };
   };
   const random = () => wallets[Math.floor(Math.random() * wallets.length)] as { walletId: string; playerId: string };
   const history: Op[] = [];
 
   const results: ScenarioResult[] = [];
-  results.push(await runScenario('distributed', `${WALLETS} wallets, 80% BET / 20% WIN of 1.00, unique operations`, targets, db, () => makeOp(random())));
+  results.push(
+    await runScenario('distributed', `${WALLETS} wallets, 80% BET / 20% WIN of 1.00, unique operations`, targets, db, () =>
+      makeOp(random()),
+    ),
+  );
   results.push(await runScenario('hot-wallet', 'every request on the same wallet (row-lock serialised)', targets, db, () => makeOp(hot)));
   results.push(
-    await runScenario('retry-storm', 'distributed, 30% of requests are retries of already-sent operations (idempotent replays)', targets, db, () => {
-      if (history.length > 100 && Math.random() < 0.3) return { ...(history[Math.floor(Math.random() * history.length)] as Op), kind: 'REPLAY' };
-      const op = makeOp(random());
-      if (history.length < 5000) history.push(op);
-      return op;
-    }),
+    await runScenario(
+      'retry-storm',
+      'distributed, 30% of requests are retries of already-sent operations (idempotent replays)',
+      targets,
+      db,
+      () => {
+        if (history.length > 100 && Math.random() < 0.3)
+          return { ...(history[Math.floor(Math.random() * history.length)] as Op), kind: 'REPLAY' };
+        const op = makeOp(random());
+        if (history.length < 5000) history.push(op);
+        return op;
+      },
+    ),
   );
 
   // consistency proof for every wallet touched
@@ -215,7 +261,9 @@ try {
         AND w.balance <> COALESCE((SELECT SUM(CASE WHEN direction='CREDIT' THEN amount ELSE -amount END) FROM wallet_ledger_entries l WHERE l.wallet_id = w.id), 0)`,
     [ids],
   );
-  const { rows: env } = await db.query<{ v: string; mc: string; sb: string }>(`SELECT version() AS v, current_setting('max_connections') AS mc, current_setting('shared_buffers') AS sb`);
+  const { rows: env } = await db.query<{ v: string; mc: string; sb: string }>(
+    `SELECT version() AS v, current_setting('max_connections') AS mc, current_setting('shared_buffers') AS sb`,
+  );
 
   console.table(results.map(({ statusCounts, description, ...r }) => ({ ...r, statuses: JSON.stringify(statusCounts) })));
   console.log(`inconsistent wallets after load: ${inconsistent.length}`);
@@ -244,7 +292,13 @@ try {
   await shutdown();
 }
 
-function writeReport(report: { date: string; environment: Record<string, unknown>; parameters: Record<string, number>; results: ScenarioResult[]; inconsistentWallets: number }) {
+function writeReport(report: {
+  date: string;
+  environment: Record<string, unknown>;
+  parameters: Record<string, number>;
+  results: ScenarioResult[];
+  inconsistentWallets: number;
+}) {
   const env = report.environment as Record<string, unknown>;
   const block = [
     '<!-- results:start (generated by `bun run test:load`) -->',
@@ -254,7 +308,14 @@ function writeReport(report: { date: string; environment: Record<string, unknown
     '',
     '| Scenario | Requests | Throughput (req/s) | p50 (ms) | p95 (ms) | p99 (ms) | max (ms) | Error rate (5xx/network) | Status codes | Lock conflicts | Retries | Max outbox lag (s) | Outbox drain after load (s) |',
     '|---|---|---|---|---|---|---|---|---|---|---|---|---|',
-    ...report.results.map((r) => `| **${r.name}** — ${r.description} | ${r.requests} | ${r.throughput} | ${r.p50} | ${r.p95} | ${r.p99} | ${r.max} | ${r.errorRate}% | ${Object.entries(r.statusCounts).map(([k, v]) => `${k}: ${v}`).join(', ')} | ${r.lockConflicts} | ${r.retries} | ${r.maxOutboxLagS} | ${r.outboxDrainS} |`),
+    ...report.results.map(
+      (r) =>
+        `| **${r.name}** — ${r.description} | ${r.requests} | ${r.throughput} | ${r.p50} | ${r.p95} | ${r.p99} | ${r.max} | ${r.errorRate}% | ${Object.entries(
+          r.statusCounts,
+        )
+          .map(([k, v]) => `${k}: ${v}`)
+          .join(', ')} | ${r.lockConflicts} | ${r.retries} | ${r.maxOutboxLagS} | ${r.outboxDrainS} |`,
+    ),
     '',
     `**Consistency after load:** ${report.inconsistentWallets} wallet(s) with \`balance ≠ Σ ledger\` (expected 0).`,
     '<!-- results:end -->',
