@@ -1,0 +1,7 @@
+node_modules
+.git
+test
+docs
+Claude outputs
+*.md
+.env

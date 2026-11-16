@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.env
+*.log
+coverage/
+.load-test/
+Claude outputs/
