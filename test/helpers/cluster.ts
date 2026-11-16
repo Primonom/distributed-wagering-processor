@@ -23,7 +23,14 @@ const ROOT = join(import.meta.dir, '..', '..');
 const LOG_DIR = join(tmpdir(), 'wagering-test-logs');
 mkdirSync(LOG_DIR, { recursive: true });
 
-let nextPort = 42000 + Math.floor(Math.random() * 2000);
+/** Asks the OS for a free port (fixed ranges collide with ephemeral client ports). */
+function freePort(): number {
+  const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: () => new Response('') });
+  const port = server.port;
+  server.stop(true);
+  if (port === undefined) throw new Error('could not allocate a port');
+  return port;
+}
 
 export const FAST_ENV: Record<string, string> = {
   DATABASE_URL: TEST_DATABASE_URL,
@@ -45,7 +52,7 @@ export const FAST_ENV: Record<string, string> = {
   SHUTDOWN_TIMEOUT_MS: '5000',
 };
 
-export function queueEnv(tag = randomUUID().slice(0, 8)): Record<string, string> {
+export function queueEnv(tag = randomUUID().slice(0, 8)): { SQS_WAGER_QUEUE: string; SQS_WAGER_DLQ: string; SQS_EVENTS_QUEUE: string } {
   return {
     SQS_WAGER_QUEUE: `c-${tag}-wager.fifo`,
     SQS_WAGER_DLQ: `c-${tag}-wager-dlq.fifo`,
@@ -55,7 +62,17 @@ export function queueEnv(tag = randomUUID().slice(0, 8)): Record<string, string>
 
 export async function spawnInstance(name: string, env: Record<string, string>, opts: { waitReady?: boolean } = {}): Promise<Instance> {
   await ensureMigrated();
-  const port = nextPort++;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await spawnOnce(name, env, opts);
+    } catch (error) {
+      if (attempt >= 3 || !String(error).includes('EADDRINUSE')) throw error;
+    }
+  }
+}
+
+async function spawnOnce(name: string, env: Record<string, string>, opts: { waitReady?: boolean }): Promise<Instance> {
+  const port = freePort();
   const logFile = join(LOG_DIR, `${name}-${port}.log`);
   const fullEnv = { ...process.env, ...FAST_ENV, ...env, PORT: String(port), INSTANCE_ID: `${name}-${port}` } as Record<string, string>;
   const proc = Bun.spawn({
@@ -73,7 +90,10 @@ export async function spawnInstance(name: string, env: Record<string, string>, o
 export async function waitReady(instance: Instance, timeoutMs = 90_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    if (instance.proc.exitCode !== null) throw new Error(`${instance.name} exited early with ${instance.proc.exitCode}; see ${instance.logFile}.err`);
+    if (instance.proc.exitCode !== null) {
+      const stderr = await Bun.file(`${instance.logFile}.err`).text().catch(() => '');
+      throw new Error(`${instance.name} exited early with ${instance.proc.exitCode}${stderr.includes('EADDRINUSE') ? ' (EADDRINUSE)' : ''}; see ${instance.logFile}.err`);
+    }
     try {
       const res = await fetch(`${instance.baseUrl}/health/ready`);
       if (res.status === 200) return;
