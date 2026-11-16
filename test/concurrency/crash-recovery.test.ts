@@ -222,7 +222,8 @@ describe('restart with proof of final consistency', () => {
     await stopAll(reborn);
   });
 
-  test('SIGTERM under SQS load: graceful drain, connections closed, nothing is lost', async () => {
+  // On native Windows, Bun's proc.kill('SIGTERM') is a hard TerminateProcess: the graceful path only exists on POSIX.
+  test.skipIf(process.platform === 'win32')('SIGTERM under SQS load: graceful drain, connections closed, nothing is lost', async () => {
     const env = { ...queueEnv(), CONSUMER_ENABLED: 'true', SQS_VISIBILITY_TIMEOUT_S: '30' };
     const a = await spawn('graceful-a', { ...env, LOG_LEVEL: 'info' });
     const api = new ApiClient(a.baseUrl);
