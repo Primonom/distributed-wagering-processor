@@ -5,7 +5,7 @@
 ## Phases
 - [x] 1. Scaffold (Bun 1.4.4, NestJS 11, MikroORM 6, docker compose postgres+localstack(3.8 pinned)+app)
 - [x] 2. Domain + unit tests
-- [ ] 3. Persistence (MikroORM, migrations, constraints, repositories, UoW)
+- [x] 3. Persistence (MikroORM, migrations, constraints, repositories, UoW)
 - [ ] 4. Use cases + HTTP
 - [ ] 5. Outbox publisher + PENDING_REFERENCE worker
 - [ ] 6. SQS consumer (inbox, retry, DLQ, graceful shutdown)
